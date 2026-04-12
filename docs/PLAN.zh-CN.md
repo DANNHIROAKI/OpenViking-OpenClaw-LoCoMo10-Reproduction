@@ -2,29 +2,19 @@
 
 ## 你现在所处的位置
 
-数据已经准备完毕，当前最正确的下一步不是直接跑全量，而是先把复现流程拆成 4 个阶段：
+数据已经准备完毕。当前最正确的下一步不是直接跑全量，而是先把复现流程拆成 4 个阶段：
 
 - 阶段 A：把 `OpenClaw(memory-core)` 和 `OpenViking Plugin (-memory-core)` 的 smoke 跑通
-- 阶段 B：把这两组扩到 10 个 sample 的全量
+- 阶段 B：把这两组扩到 10 个 sample 的全量，并完成 merge / token / judge / verify
 - 阶段 C：处理 `memory-lancedb` 的安装/依赖问题，再做 row2
 - 阶段 D：把 row4 单独作为“历史兼容 / 文档缺口”处理，不和前三组混跑
 
 ## 阶段 A：先拿下 row1 和 row3 的 smoke
 
-### A1. 拉上游仓库
+### A0. 一次性准备上游仓库和虚拟环境
 
 ```bash
-./scripts/fetch_upstreams.sh
-```
-
-结果：
-- `third_party/openclaw-eval/`
-- `third_party/OpenViking/`
-
-### A2. 安装环境
-
-```bash
-./scripts/setup_envs.sh
+./scripts/bootstrap_once.sh
 openclaw onboard
 ./scripts/record_versions.sh
 ```
@@ -35,7 +25,7 @@ openclaw onboard
 - `.venv-ov` 存在，且装的是 `openviking==0.1.18`
 - `artifacts/versions.txt` 已经写出来
 
-### A3. 预检查
+### A1. 预检查
 
 ```bash
 ./scripts/preflight.sh
@@ -47,7 +37,7 @@ openclaw onboard
 - `openclaw-eval` checkout 存在
 - Python / Node / npm 命令可用
 
-### A4. 跑 row1 冒烟
+### A2. 跑 row1 冒烟
 
 ```bash
 ./scripts/smoke_row1_memory_core.sh
@@ -59,7 +49,7 @@ openclaw onboard
 - `runs/smoke/row1-memory-core/qa.txt.1.jsonl`
 - `qa.txt` 里能找到 `input_tokens:`
 
-### A5. 安装旧版 OpenViking helper 并配置 row3
+### A3. 安装旧版 OpenViking helper 并配置 row3
 
 ```bash
 ./scripts/install_openviking_helper.sh
@@ -84,7 +74,7 @@ ov-install
 ./scripts/configure_openviking_local.sh
 ```
 
-### A6. 跑 row3 冒烟
+### A4. 跑 row3 冒烟
 
 ```bash
 ./scripts/smoke_row3_openviking_minus_core.sh
@@ -115,20 +105,20 @@ runs/full/<group>/sample_1/
 runs/full/<group>/sample_9/
 ```
 
-### B3. 合并和打分
+### B3. 对每组做收尾
 
 ```bash
-python3 scripts/merge_answers.py row1-memory-core --expected 1540
-python3 scripts/merge_answers.py row3-openviking-minus-core --expected 1540
-
-python3 scripts/sum_input_tokens.py row1-memory-core
-python3 scripts/sum_input_tokens.py row3-openviking-minus-core
-
-./scripts/judge_group.sh row1-memory-core
-./scripts/judge_group.sh row3-openviking-minus-core
+./scripts/finalize_group.sh row1-memory-core
+./scripts/finalize_group.sh row3-openviking-minus-core
 ```
 
-### B4. 生成对比表
+它会依次做：
+- 合并答案
+- 汇总 `input_tokens`
+- 跑 judge
+- 生成该组的 verification 报告
+
+### B4. 生成总对比表
 
 ```bash
 python3 scripts/build_results_table.py
@@ -149,11 +139,6 @@ row2 不建议一开始就跑。先做这几步：
 ./scripts/patch_memory_lancedb_global.sh
 ```
 
-这个脚本会尝试：
-- 定位全局 `openclaw` 安装目录
-- 补 `dist/package.json` 中的 `@lancedb/lancedb` 依赖声明
-- 在 `memory-lancedb` 扩展目录里执行 `npm install @lancedb/lancedb`
-
 ### C2. 切到 row2 配置
 
 ```bash
@@ -170,9 +155,9 @@ row2 不建议一开始就跑。先做这几步：
 
 ```bash
 ./scripts/run_full_group.sh row2-memory-lancedb
+./scripts/finalize_group.sh row2-memory-lancedb
+python3 scripts/build_results_table.py
 ```
-
-然后同样做合并、token 汇总和 judge。
 
 ## 阶段 D：row4 单独处理
 
@@ -196,6 +181,7 @@ row2 不建议一开始就跑。先做这几步：
 - row1 和 row3 的全量都已经完成
 - 合并记录数是 1540
 - 你已经拿到至少一版 judge 分数和 token 汇总
+- 你已经生成过至少一版 verification 报告
 
 ### 什么时候才值得碰 row4
 
@@ -206,36 +192,12 @@ row2 不建议一开始就跑。先做这几步：
 
 ```bash
 cp .env.example .env
-./scripts/fetch_upstreams.sh
-./scripts/setup_envs.sh
+./scripts/bootstrap_once.sh
 openclaw onboard
 ./scripts/record_versions.sh
 ./scripts/preflight.sh
-./scripts/smoke_row1_memory_core.sh
-./scripts/install_openviking_helper.sh
-# 按提示执行 ov-install
-./scripts/configure_openviking_local.sh
-./scripts/smoke_row3_openviking_minus_core.sh
-./scripts/run_full_group.sh row1-memory-core
-./scripts/run_full_group.sh row3-openviking-minus-core
-python3 scripts/merge_answers.py row1-memory-core --expected 1540
-python3 scripts/merge_answers.py row3-openviking-minus-core --expected 1540
-python3 scripts/sum_input_tokens.py row1-memory-core
-python3 scripts/sum_input_tokens.py row3-openviking-minus-core
-./scripts/judge_group.sh row1-memory-core
-./scripts/judge_group.sh row3-openviking-minus-core
-python3 scripts/build_results_table.py
-# 再处理 row2
-./scripts/patch_memory_lancedb_global.sh
-./scripts/smoke_row2_lancedb.sh
-./scripts/run_full_group.sh row2-memory-lancedb
+./scripts/phase_a_smoke.sh
+./scripts/phase_b_full_core_and_ov.sh
+./scripts/phase_c_row2.sh
+python3 scripts/status_matrix.py
 ```
-
-
-## 新增的一键包装脚本
-
-- `./scripts/phase_a_smoke.sh`：把 preflight、row1 smoke、row3 smoke 串起来；如果缺少 `ov-install` 生成的 env 文件，会停下来明确告诉你下一条命令。
-- `./scripts/phase_b_full_core_and_ov.sh`：顺序跑 row1 / row3 全量，并自动 merge、sum tokens、judge、生成 summary。
-- `./scripts/phase_c_row2.sh`：顺序跑 row2 的 patch、smoke、full、merge、judge、summary。
-- `python3 scripts/status_matrix.py`：根据仓库中已经生成的文件，告诉你“当前做到哪一步、下一条最推荐的命令是什么”。
-- `./scripts/row4_probe.sh`：不跑 row4，只导出当前 OpenClaw 插件状态，作为后续调查材料。

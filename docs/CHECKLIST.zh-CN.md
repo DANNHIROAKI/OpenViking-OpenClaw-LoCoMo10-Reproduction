@@ -9,8 +9,7 @@
   - [ ] `JUDGE_BASE_URL`
   - [ ] `JUDGE_API_KEY`
   - [ ] `JUDGE_MODEL`
-- [ ] `./scripts/fetch_upstreams.sh`
-- [ ] `./scripts/setup_envs.sh`
+- [ ] `./scripts/bootstrap_once.sh`
 - [ ] 手动执行一次 `openclaw onboard`
 - [ ] `./scripts/record_versions.sh`
 - [ ] `./scripts/preflight.sh`
@@ -30,13 +29,11 @@
 
 - [ ] `./scripts/run_full_group.sh row1-memory-core`
 - [ ] `./scripts/run_full_group.sh row3-openviking-minus-core`
-- [ ] `python3 scripts/merge_answers.py row1-memory-core --expected 1540`
-- [ ] `python3 scripts/merge_answers.py row3-openviking-minus-core --expected 1540`
-- [ ] `python3 scripts/sum_input_tokens.py row1-memory-core`
-- [ ] `python3 scripts/sum_input_tokens.py row3-openviking-minus-core`
-- [ ] `./scripts/judge_group.sh row1-memory-core`
-- [ ] `./scripts/judge_group.sh row3-openviking-minus-core`
+- [ ] `./scripts/finalize_group.sh row1-memory-core`
+- [ ] `./scripts/finalize_group.sh row3-openviking-minus-core`
 - [ ] `python3 scripts/build_results_table.py`
+- [ ] `python3 scripts/verify_group_outputs.py row1-memory-core`
+- [ ] `python3 scripts/verify_group_outputs.py row3-openviking-minus-core`
 
 ### 阶段 B 的通过标志
 
@@ -45,6 +42,8 @@
 - [ ] `artifacts/row1-memory-core.grades.json` 存在
 - [ ] `artifacts/row3-openviking-minus-core.grades.json` 存在
 - [ ] `artifacts/results-summary.md` 存在
+- [ ] `artifacts/row1-memory-core.verification.json` 存在
+- [ ] `artifacts/row3-openviking-minus-core.verification.json` 存在
 
 ## 阶段 C：尝试 row2（LanceDB）
 
@@ -53,9 +52,8 @@
 - [ ] `./scripts/configure_memory_lancedb.sh`
 - [ ] `./scripts/smoke_row2_lancedb.sh`
 - [ ] `./scripts/run_full_group.sh row2-memory-lancedb`
-- [ ] `python3 scripts/merge_answers.py row2-memory-lancedb --expected 1540`
-- [ ] `python3 scripts/sum_input_tokens.py row2-memory-lancedb`
-- [ ] `./scripts/judge_group.sh row2-memory-lancedb`
+- [ ] `./scripts/finalize_group.sh row2-memory-lancedb`
+- [ ] `python3 scripts/verify_group_outputs.py row2-memory-lancedb`
 - [ ] `python3 scripts/build_results_table.py`
 
 ## 阶段 D：row4 只做调查，不在主线中自动化

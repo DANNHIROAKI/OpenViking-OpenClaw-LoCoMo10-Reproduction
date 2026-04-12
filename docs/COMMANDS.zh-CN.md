@@ -4,8 +4,7 @@
 
 ```bash
 cp .env.example .env
-./scripts/fetch_upstreams.sh
-./scripts/setup_envs.sh
+./scripts/bootstrap_once.sh
 openclaw onboard
 ./scripts/record_versions.sh
 ./scripts/preflight.sh
@@ -29,10 +28,18 @@ ov-install
 ./scripts/phase_a_smoke.sh
 ```
 
-## 阶段 B：row1 / row3 全量 + 合并 + judge + summary
+## 阶段 B：row1 / row3 全量 + finalize + summary
 
 ```bash
 ./scripts/phase_b_full_core_and_ov.sh
+```
+
+## 单独 finalize 某一组
+
+```bash
+./scripts/finalize_group.sh row1-memory-core
+./scripts/finalize_group.sh row3-openviking-minus-core
+./scripts/finalize_group.sh row2-memory-lancedb
 ```
 
 ## 阶段 C：row2 LanceDB
@@ -47,9 +54,13 @@ ov-install
 ./scripts/row4_probe.sh
 ```
 
-## 随时查看当前进度
+## 结果核对
 
 ```bash
+python3 scripts/verify_group_outputs.py row1-memory-core
+python3 scripts/verify_group_outputs.py row3-openviking-minus-core
+python3 scripts/verify_group_outputs.py row2-memory-lancedb
+python3 scripts/build_results_table.py
 python3 scripts/status_matrix.py
 ```
 

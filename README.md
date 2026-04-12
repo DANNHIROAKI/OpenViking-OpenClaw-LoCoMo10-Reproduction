@@ -13,21 +13,19 @@
 | OpenClaw + OpenViking Plugin (-memory-core) | 52.08% | 4,264,396 |
 | OpenClaw + OpenViking Plugin (+memory-core) | 51.23% | 2,099,622 |
 
-仓库内的 `official_targets.json` 已经把这张表编码好了，后续可以直接生成自己的对比结果表。
+## 这份仓库现在能做什么
 
-## 当前仓库能做什么
+这份仓库已经从“只准备数据”扩成了一套分阶段复现框架：
 
-这个仓库已经不只是“准备数据”，而是一套按阶段执行的复现实验框架：
-
-- 已包含过滤后的 LoCoMo10 数据（1540 QA case）
-- 可以拉取并固定 `openclaw-eval` 上游 commit
-- 可以安装两套隔离环境：`openclaw-eval` + `OpenViking 0.1.18`
-- 可以自动跑三组实验的 smoke / full：
-  - row1: `OpenClaw(memory-core)`
-  - row2: `OpenClaw + LanceDB (-memory-core)`
-  - row3: `OpenClaw + OpenViking Plugin (-memory-core)`
-- 可以汇总 token、合并 answers、运行 judge、生成对比表
-- 对 row4 提供了单独说明文档和决策记录
+- 自带过滤后的 LoCoMo10 数据（1540 QA case）
+- 固定 `openclaw-eval` 上游 commit
+- 创建两套隔离环境：`openclaw-eval` / `OpenViking 0.1.18`
+- 跑 3 组主线实验：
+  - `row1-memory-core`
+  - `row2-memory-lancedb`
+  - `row3-openviking-minus-core`
+- 合并答案、汇总输入 token、运行 judge、生成对比表
+- 把 `row4-openviking-plus-core` 单独保留为调查项，不混入主线自动化
 
 ## 目录结构
 
@@ -43,9 +41,13 @@
 │   └── openviking-locomo10-1540/
 ├── dataset.sh
 ├── docs/
+│   ├── CHECKLIST.zh-CN.md
+│   ├── COMMANDS.zh-CN.md
+│   ├── NEXT_STEPS.zh-CN.md
 │   ├── PLAN.zh-CN.md
 │   ├── ROW4_NOTES.zh-CN.md
-│   └── TROUBLESHOOTING.zh-CN.md
+│   ├── TROUBLESHOOTING.zh-CN.md
+│   └── UPSTREAM_CONSTRAINTS.zh-CN.md
 ├── logs/
 ├── runs/
 │   ├── full/
@@ -54,166 +56,126 @@
 └── third_party/
 ```
 
-## 先看哪份文档
+## 你现在该先做什么
 
-- 方案总览：`docs/PLAN.zh-CN.md`
-- 逐项勾选清单：`docs/CHECKLIST.zh-CN.md`
-- 一屏内可复制命令：`docs/COMMANDS.zh-CN.md`
-- row4 为什么先不自动化：`docs/ROW4_NOTES.zh-CN.md`
-- 常见报错和排查：`docs/TROUBLESHOOTING.zh-CN.md`
+先只做 row1 / row3 的 smoke，不要直接跑全量。
 
-## 快速开始
-
-### 0. 复制环境变量模板
+### 最短执行路径
 
 ```bash
 cp .env.example .env
-```
-
-你至少要先填：
-
-- `OPENCLAW_GATEWAY_TOKEN`
-- `OPENVIKING_ARK_API_KEY`
-- `JUDGE_BASE_URL`
-- `JUDGE_API_KEY`
-- `JUDGE_MODEL`
-- 如果要跑 row2：`LANCEDB_EMBEDDING_API_KEY`
-
-### 1. 拉上游仓库
-
-```bash
-./scripts/fetch_upstreams.sh
-```
-
-### 2. 安装环境
-
-```bash
-./scripts/setup_envs.sh
+./scripts/bootstrap_once.sh
 openclaw onboard
 ./scripts/record_versions.sh
-```
-
-### 3. 预检查
-
-```bash
 ./scripts/preflight.sh
+./scripts/phase_a_smoke.sh
+python3 scripts/status_matrix.py
 ```
 
-### 4. 阶段 A：直接跑 row1 / row3 冒烟包装脚本
+如果 `phase_a_smoke.sh` 提示你要先执行 `ov-install`，按提示跑完以后，再重新执行一次它。
+
+## 推荐执行顺序
+
+### 阶段 A：row1 / row3 冒烟
 
 ```bash
 ./scripts/phase_a_smoke.sh
 ```
 
-如果脚本提示你先执行 `ov-install`，按提示做完后再重新运行它。
-
-### 5. 阶段 B：row1 / row3 全量 + 合并 + judge + summary
+### 阶段 B：row1 / row3 全量 + 合并 + judge + summary
 
 ```bash
 ./scripts/phase_b_full_core_and_ov.sh
 ```
 
-### 6. 阶段 C：再尝试 row2
+### 阶段 C：row2（LanceDB）
 
 ```bash
 ./scripts/phase_c_row2.sh
 ```
 
-### 7. 随时查看“下一步该跑什么”
+### 阶段 D：row4 调查
+
+```bash
+./scripts/row4_probe.sh
+```
+
+## 随时查看“下一步该跑什么”
 
 ```bash
 python3 scripts/status_matrix.py
 ```
 
-### 8. 汇总结果
+## 文档导航
 
-```bash
-python3 scripts/merge_answers.py row1-memory-core --expected 1540
-python3 scripts/merge_answers.py row3-openviking-minus-core --expected 1540
-python3 scripts/merge_answers.py row2-memory-lancedb --expected 1540
+- 方案总览：`docs/PLAN.zh-CN.md`
+- 现在就照着跑：`docs/NEXT_STEPS.zh-CN.md`
+- 一屏内可复制命令：`docs/COMMANDS.zh-CN.md`
+- 执行清单：`docs/CHECKLIST.zh-CN.md`
+- 上游约束说明：`docs/UPSTREAM_CONSTRAINTS.zh-CN.md`
+- row4 为什么不放主线：`docs/ROW4_NOTES.zh-CN.md`
+- 常见报错和排查：`docs/TROUBLESHOOTING.zh-CN.md`
 
-python3 scripts/sum_input_tokens.py row1-memory-core
-python3 scripts/sum_input_tokens.py row3-openviking-minus-core
-python3 scripts/sum_input_tokens.py row2-memory-lancedb
+## 关键脚本
 
-./scripts/judge_group.sh row1-memory-core
-./scripts/judge_group.sh row3-openviking-minus-core
-./scripts/judge_group.sh row2-memory-lancedb
+### 初始化 / 校验
 
-python3 scripts/build_results_table.py
-```
+- `scripts/bootstrap_once.sh`
+- `scripts/fetch_upstreams.sh`
+- `scripts/setup_envs.sh`
+- `scripts/record_versions.sh`
+- `scripts/preflight.sh`
+- `scripts/check_dataset.py`
+- `scripts/status_matrix.py`
 
-## 脚本说明
-
-### 核心准备
-
-- `scripts/fetch_upstreams.sh`：拉取 `openclaw-eval` 和 `OpenViking`
-- `scripts/setup_envs.sh`：安装 OpenClaw、创建两套 venv
-- `scripts/record_versions.sh`：写出 `artifacts/versions.txt`
-- `scripts/preflight.sh`：检查数据、环境变量、目录和常用命令
-- `scripts/diagnose_openclaw.sh`：导出 OpenClaw 状态和插件列表
-
-### 组别切换
+### 组别配置
 
 - `scripts/configure_memory_core.sh`
 - `scripts/configure_memory_lancedb.sh`
 - `scripts/patch_memory_lancedb_global.sh`
+- `scripts/install_openviking_helper.sh`
 - `scripts/configure_openviking_local.sh`
 
 ### 运行实验
 
-- `scripts/phase_a_smoke.sh`
-- `scripts/phase_b_full_core_and_ov.sh`
-- `scripts/phase_c_row2.sh`
 - `scripts/smoke_row1_memory_core.sh`
 - `scripts/smoke_row2_lancedb.sh`
 - `scripts/smoke_row3_openviking_minus_core.sh`
 - `scripts/run_full_group.sh`
+- `scripts/finalize_group.sh`
+- `scripts/phase_a_smoke.sh`
+- `scripts/phase_b_full_core_and_ov.sh`
+- `scripts/phase_c_row2.sh`
 - `scripts/row4_probe.sh`
 
-### 汇总结果
+### 汇总与核对
 
 - `scripts/merge_answers.py`
 - `scripts/sum_input_tokens.py`
 - `scripts/judge_group.sh`
+- `scripts/verify_group_outputs.py`
 - `scripts/build_results_table.py`
-- `scripts/status_matrix.py`
 - `scripts/collect_debug_bundle.sh`
-- `scripts/check_dataset.py`
 
 ## Makefile 快捷命令
 
 ```bash
+make bootstrap
 make fetch-upstreams
 make setup-envs
 make versions
 make preflight
 make status
-make diagnose-openclaw
 make phase-a
-make install-ov-helper
-make configure-ov-local
 make phase-b
-make patch-row2
-make configure-row2
 make phase-c
 make row4-probe
-make bundle
-make full-row1
-make full-row2
-make full-row3
-make merge-row1
-make merge-row2
-make merge-row3
-make judge-row1
-make judge-row2
-make judge-row3
 make summary
 ```
 
 ## 重要注意事项
 
-1. `ingest` 和 `qa` 必须显式传同一个 `--user`。本仓库里的运行脚本都已经固定这么做。
-2. row3 用的是旧版 `memory-openviking` 路径，不是新版 `openviking` context-engine 插件。
-3. row2 当前最好放在 row1 / row3 之后，因为 `memory-lancedb` 最近有多条公开 issue 指向依赖缺失或插件无法加载。
+1. `ingest` 和 `qa` 必须显式传同一个 `--user`。本仓库的运行脚本已经固定这么做。
+2. row3 走的是旧版 `memory-openviking` 路径，不是新版 `openviking` context-engine 插件。
+3. row2 不建议先于 row1 / row3，因为 `memory-lancedb` 近期更容易卡在依赖和插件加载。
 4. row4 目前不做“一键自动化”，原因见 `docs/ROW4_NOTES.zh-CN.md`。

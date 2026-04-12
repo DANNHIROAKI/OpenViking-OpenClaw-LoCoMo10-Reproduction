@@ -1,9 +1,7 @@
-.PHONY: fetch-upstreams setup-envs versions preflight status diagnose-openclaw phase-a phase-b phase-c row4-probe bundle \
-	smoke-row1 install-ov-helper configure-ov-local smoke-row3 \
-	patch-row2 configure-row2 smoke-row2 \
-	full-row1 full-row2 full-row3 \
-	merge-row1 merge-row2 merge-row3 \
-	judge-row1 judge-row2 judge-row3 summary check-dataset
+.PHONY: bootstrap fetch-upstreams setup-envs versions preflight status diagnose-openclaw phase-a phase-b phase-c row4-probe bundle 	smoke-row1 install-ov-helper configure-ov-local smoke-row3 	patch-row2 configure-row2 smoke-row2 	full-row1 full-row2 full-row3 	merge-row1 merge-row2 merge-row3 	judge-row1 judge-row2 judge-row3 	finalize-row1 finalize-row2 finalize-row3 	verify-row1 verify-row2 verify-row3 summary check-dataset
+
+bootstrap:
+	./scripts/bootstrap_once.sh
 
 fetch-upstreams:
 	./scripts/fetch_upstreams.sh
@@ -88,6 +86,24 @@ judge-row2:
 
 judge-row3:
 	./scripts/judge_group.sh row3-openviking-minus-core
+
+finalize-row1:
+	./scripts/finalize_group.sh row1-memory-core
+
+finalize-row2:
+	./scripts/finalize_group.sh row2-memory-lancedb
+
+finalize-row3:
+	./scripts/finalize_group.sh row3-openviking-minus-core
+
+verify-row1:
+	python3 scripts/verify_group_outputs.py row1-memory-core
+
+verify-row2:
+	python3 scripts/verify_group_outputs.py row2-memory-lancedb
+
+verify-row3:
+	python3 scripts/verify_group_outputs.py row3-openviking-minus-core
 
 summary:
 	python3 scripts/build_results_table.py

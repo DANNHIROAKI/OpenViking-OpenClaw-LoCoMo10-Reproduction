@@ -77,17 +77,17 @@ def next_step() -> str:
     if not env_loaded():
         return "cp .env.example .env"
     if not (ROOT / "third_party" / "openclaw-eval" / "eval.py").exists():
-        return "./scripts/fetch_upstreams.sh"
+        return "./scripts/bootstrap_once.sh"
     if not (ROOT / "third_party" / "openclaw-eval" / ".venv" / "bin" / "python").exists() or not (ROOT / ".venv-ov" / "bin" / "python").exists():
-        return "./scripts/setup_envs.sh"
+        return "./scripts/bootstrap_once.sh"
     if not file_nonempty(ARTIFACTS / "versions.txt"):
         return "openclaw onboard && ./scripts/record_versions.sh"
     if not smoke_ok("row1-memory-core"):
-        return "./scripts/smoke_row1_memory_core.sh"
+        return "./scripts/phase_a_smoke.sh"
     if not (Path.home() / ".openclaw" / "openviking.env").exists():
         return "./scripts/install_openviking_helper.sh && ov-install"
     if not smoke_ok("row3-openviking-minus-core"):
-        return "./scripts/smoke_row3_openviking_minus_core.sh"
+        return "./scripts/phase_a_smoke.sh"
     if answers_count("row1-memory-core") != 1540 or score_value("row1-memory-core") is None:
         return "./scripts/phase_b_full_core_and_ov.sh"
     if token_value("row2-memory-lancedb") is None and answers_count("row2-memory-lancedb") is None:
