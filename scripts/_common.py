@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import subprocess
 from typing import Any
 
@@ -24,9 +25,10 @@ BRACE_PLACEHOLDER_RE = re.compile(r'(?<!\$)\{([A-Za-z_][A-Za-z0-9_]*)\}')
 ENV_PLACEHOLDER_RE = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
 _META_KEYS = {'notes', '__repro_meta__', '_repro_meta', '_meta'}
 _SENSITIVE_TOKENS = {'api_key', 'apikey', 'token', 'secret', 'password'}
-
-
 _VERSION_RE = re.compile(r'(\d+(?:\.\d+)+|\d+)')
+_ENV_KEY_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_INT_RE = re.compile(r'-?\d+')
+_FLOAT_RE = re.compile(r'-?(?:\d+\.\d*|\d*\.\d+)')
 
 
 def parse_numeric_version(text: str | None) -> tuple[int, ...] | None:
@@ -67,7 +69,7 @@ def version_matches_major_minor(text: str | None, expected_prefix: str) -> bool:
     target = parse_version_pattern(expected_prefix)
     if actual is None or target is None:
         return False
-    return actual[:len(target)] == target
+    return actual[: len(target)] == target
 
 
 def version_satisfies_min(text: str | None, minimum: str) -> bool:
@@ -93,41 +95,109 @@ def group_readiness(group: str, manifest: dict[str, Any] | None = None) -> dict[
     return (data.get('group_readiness') or {}).get(group, {})
 
 
-def load_env_file() -> dict[str, str]:
+def _strip_wrapping_quotes(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+        return value[1:-1]
+    return value
+
+
+def _parse_env_assignment(line: str) -> tuple[str, str] | None:
+    raw = line.strip()
+    if not raw or raw.startswith('#'):
+        return None
+    if raw.startswith('export '):
+        raw = raw[len('export ') :].lstrip()
+    if '=' not in raw:
+        return None
+    key, value = raw.split('=', 1)
+    key = key.strip()
+    if not _ENV_KEY_RE.fullmatch(key):
+        return None
+    return key, _strip_wrapping_quotes(value)
+
+
+def load_env_file(path: Path | None = None) -> dict[str, str]:
+    env_path = path or ENV_FILE
     env: dict[str, str] = {}
-    if not ENV_FILE.exists():
+    if not env_path.exists():
         return env
-    for line in ENV_FILE.read_text(encoding='utf-8').splitlines():
-        raw = line.strip()
-        if not raw or raw.startswith('#') or '=' not in raw:
+    for line in env_path.read_text(encoding='utf-8').splitlines():
+        parsed = _parse_env_assignment(line)
+        if parsed is None:
             continue
-        key, value = raw.split('=', 1)
-        env[key.strip()] = value.strip()
+        key, value = parsed
+        env[key] = value
     return env
 
 
-def merged_env(extra: dict[str, str] | None = None) -> dict[str, str]:
-    env = dict(os.environ)
+def runtime_env_file_path() -> Path | None:
+    raw = os.environ.get('REPRO_RUNTIME_ENV_FILE')
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = (ROOT / path).resolve()
+    return path
+
+
+def load_runtime_env_file() -> dict[str, str]:
+    path = runtime_env_file_path()
+    if path is None:
+        return {}
+    return load_env_file(path)
+
+
+def merged_env(
+    extra: dict[str, Any] | None = None,
+    *,
+    base_env: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    env: dict[str, str] = {}
     env.update(load_env_file())
+    env.update(load_runtime_env_file())
+    source_env = base_env if base_env is not None else os.environ
+    env.update({k: str(v) for k, v in source_env.items()})
     if extra:
-        env.update(extra)
+        env.update({k: str(v) for k, v in extra.items() if v is not None})
     return env
 
 
-def apply_env_file() -> dict[str, str]:
-    env = load_env_file()
-    for k, v in env.items():
-        os.environ.setdefault(k, v)
+def apply_env_file(extra: dict[str, Any] | None = None) -> dict[str, str]:
+    env = merged_env(extra)
+    os.environ.update(env)
     return env
+
+
+def to_shell_exports(env_map: dict[str, Any]) -> str:
+    lines = []
+    for key in sorted(env_map):
+        value = env_map[key]
+        if value is None:
+            continue
+        lines.append(f'export {key}={shlex.quote(str(value))}')
+    return '\n'.join(lines) + ('\n' if lines else '')
 
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def write_json(path: Path, obj: Any) -> None:
+def parse_json_text(text: str) -> Any | None:
+    try:
+        return json.loads(text)
+    except Exception:
+        return None
+
+
+def write_json(path: Path, obj: Any, *, sort_keys: bool = True) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2, sort_keys=sort_keys) + '\n', encoding='utf-8')
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding='utf-8')
 
 
 def sha256_file(path: Path) -> str:
@@ -277,11 +347,7 @@ def collect_env_placeholders(value: Any) -> set[str]:
 
 def strip_repro_meta(value: Any) -> Any:
     if isinstance(value, dict):
-        return {
-            key: strip_repro_meta(item)
-            for key, item in value.items()
-            if key not in _META_KEYS
-        }
+        return {key: strip_repro_meta(item) for key, item in value.items() if key not in _META_KEYS}
     if isinstance(value, list):
         return [strip_repro_meta(item) for item in value]
     return value
@@ -301,31 +367,71 @@ def _path_is_sensitive(path: str) -> bool:
     return any(token in lowered for token in _SENSITIVE_TOKENS)
 
 
-def _coerce_scalar(value: Any) -> Any:
-    if isinstance(value, str):
-        raw = value.strip()
-        lower = raw.lower()
-        if lower == 'true':
-            return True
-        if lower == 'false':
-            return False
-        if re.fullmatch(r'-?\d+', raw):
-            try:
-                return int(raw)
-            except Exception:
-                return raw
-        if re.fullmatch(r'-?\d+\.\d+', raw):
-            try:
-                return float(raw)
-            except Exception:
-                return raw
+def _coerce_string(value: str, path: str = '') -> Any:
+    raw = value.strip()
+    if not raw or _path_is_sensitive(path):
+        return value
+    if ENV_PLACEHOLDER_RE.fullmatch(raw):
+        return raw
+
+    lower = raw.lower()
+    if lower == 'true':
+        return True
+    if lower == 'false':
+        return False
+    if lower == 'null':
+        return None
+
+    if raw.startswith('{') or raw.startswith('['):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = None
+        else:
+            return coerce_non_sensitive_scalars(parsed, path)
+
+    if _INT_RE.fullmatch(raw):
+        try:
+            return int(raw)
+        except Exception:
+            return value
+    if _FLOAT_RE.fullmatch(raw):
+        try:
+            return float(raw)
+        except Exception:
+            return value
     return value
 
 
-def _leaf_matches(expected: Any, actual: Any) -> bool:
+def coerce_non_sensitive_scalars(value: Any, path: str = '') -> Any:
+    if isinstance(value, dict):
+        return {
+            key: coerce_non_sensitive_scalars(item, f'{path}.{key}' if path else key)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [coerce_non_sensitive_scalars(item, f'{path}[{idx}]') for idx, item in enumerate(value)]
+    if isinstance(value, str):
+        return _coerce_string(value, path)
+    return value
+
+
+def render_materialized_config(
+    template_obj: Any,
+    mapping: dict[str, str],
+    *,
+    env: dict[str, str] | None = None,
+    strict_env: bool = True,
+) -> Any:
+    rendered = render_placeholders(template_obj, mapping, expand_env=True, env=env, strict_env=strict_env)
+    rendered = strip_repro_meta(rendered)
+    return coerce_non_sensitive_scalars(rendered)
+
+
+def _leaf_matches(expected: Any, actual: Any, path: str = '') -> bool:
     if isinstance(expected, str) and ENV_PLACEHOLDER_RE.fullmatch(expected):
         return True
-    return _coerce_scalar(expected) == _coerce_scalar(actual)
+    return coerce_non_sensitive_scalars(expected, path) == coerce_non_sensitive_scalars(actual, path)
 
 
 def subset_mismatches(expected: Any, actual: Any, path: str = '') -> list[str]:
@@ -351,7 +457,7 @@ def subset_mismatches(expected: Any, actual: Any, path: str = '') -> list[str]:
             mismatches.extend(subset_mismatches(expected_item, actual_item, f'{path}[{idx}]'))
         return mismatches
 
-    if _leaf_matches(expected, actual):
+    if _leaf_matches(expected, actual, path):
         return []
 
     if _path_is_sensitive(path):
@@ -415,5 +521,19 @@ def run_cmd(
     return subprocess.run(cmd, cwd=cwd, env=merged, text=True, capture_output=True, check=check)
 
 
-def run_shell(command: str, check: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, shell=True, text=True, capture_output=True, check=check, cwd=ROOT, env=merged_env())
+def run_shell(
+    command: str,
+    *,
+    check: bool = False,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        shell=True,
+        text=True,
+        capture_output=True,
+        check=check,
+        cwd=cwd or ROOT,
+        env=merged_env(env),
+    )

@@ -1,12 +1,16 @@
 {
-  "generated_at": "2026-04-12T13:47:26Z",
+  "manifest_version": 2,
+  "registry_path": "env/source_snapshot_registry.json",
   "snapshots": [
     {
       "snapshot_id": "75e07d696e0db5923ac767109f920df2fc807888",
+      "vendor_path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888",
       "upstream_repo": "https://github.com/ZaynJarvis/openclaw-eval",
       "ref": "75e07d696e0db5923ac767109f920df2fc807888",
-      "fetched_at": "2026-04-12T13:47:26Z",
-      "scope_note": "vendored evaluation-critical files: README.md, eval.py, judge.py, judge_util.py, locomo10.json",
+      "ref_kind": "commit",
+      "vendored_at": "2026-04-12T13:47:26Z",
+      "retrieval_method": "manual vendoring from pinned upstream snapshot",
+      "selection_scope": "evaluation-critical files: README.md, eval.py, judge.py, judge_util.py, locomo10.json",
       "used_by_groups": [
         "row1-memory-core",
         "row2-memory-lancedb",
@@ -39,10 +43,13 @@
     },
     {
       "snapshot_id": "6c60a1d2fb2debd5ac990831350e995473feb6e9",
+      "vendor_path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9",
       "upstream_repo": "https://github.com/volcengine/OpenViking",
       "ref": "6c60a1d2fb2debd5ac990831350e995473feb6e9",
-      "fetched_at": "2026-04-12T13:47:26Z",
-      "scope_note": "vendored execution-critical subtree under examples/openclaw-memory-plugin; helper/tests omitted",
+      "ref_kind": "commit",
+      "vendored_at": "2026-04-12T13:47:26Z",
+      "retrieval_method": "manual vendoring of the legacy memory-openviking subtree",
+      "selection_scope": "execution-critical subtree under examples/openclaw-memory-plugin; helper/tests omitted",
       "used_by_groups": [
         "row3-openviking-minus-core",
         "row4-exploratory-legacy-nonslot"
@@ -97,10 +104,13 @@
     },
     {
       "snapshot_id": "v0.3.5",
+      "vendor_path": "vendor/openviking-context-engine/v0.3.5",
       "upstream_repo": "https://github.com/volcengine/OpenViking",
       "ref": "v0.3.5",
-      "fetched_at": "2026-04-12T13:47:26Z",
-      "scope_note": "vendored execution-critical subtree under examples/openclaw-plugin; tests/images/setup-helper omitted",
+      "ref_kind": "tag",
+      "vendored_at": "2026-04-12T13:47:26Z",
+      "retrieval_method": "manual vendoring of the current public context-engine subtree",
+      "selection_scope": "execution-critical subtree under examples/openclaw-plugin; tests/images/setup-helper omitted",
       "used_by_groups": [
         "row4-compat-primary"
       ],

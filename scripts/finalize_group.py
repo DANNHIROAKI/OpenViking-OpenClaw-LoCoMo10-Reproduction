@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from _common import get_claim_decision, get_group_spec, load_json, run_root, utc_now, write_json
 
@@ -14,15 +15,14 @@ EXPECTED_SAMPLE_COUNTS = {
 }
 
 
-def load_jsonl(path: Path) -> list[dict]:
-    items = []
+def load_jsonl(path: Path) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
     with path.open('r', encoding='utf-8') as f:
         for line in f:
             line = line.strip()
             if line:
                 items.append(json.loads(line))
     return items
-
 
 
 def _parallel_is_one(cmd: list[str]) -> bool:
@@ -32,7 +32,6 @@ def _parallel_is_one(cmd: list[str]) -> bool:
         if item.startswith('--parallel='):
             return item.split('=', 1)[1] == '1'
     return False
-
 
 
 def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
@@ -51,6 +50,7 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     merged_results = []
     qa_missing_usage = 0
     qa_zero_usage = 0
+    qa_nonzero_usage = 0
     ingest_missing_usage = 0
     sample_count = 0
 
@@ -73,24 +73,59 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
             tokens = int(usage.get('input_tokens', 0) or 0)
             if tokens == 0:
                 qa_zero_usage += 1
+            else:
+                qa_nonzero_usage += 1
             qa_total += tokens
             qa_breakdown.append({'sample_idx': sample_meta['sample_idx'], 'qi': rec.get('qi'), 'input_tokens': tokens})
-            merged_results.append({
-                'sample_id': rec.get('sample_id'),
-                'sample_idx': sample_meta['sample_idx'],
-                'qi': rec.get('qi'),
-                'question': rec.get('question'),
-                'expected': rec.get('expected'),
-                'response': rec.get('response'),
-                'category': rec.get('category'),
-                'evidence': rec.get('evidence', []),
-                'usage': rec.get('usage', {}),
-            })
+            merged_results.append(
+                {
+                    'sample_id': rec.get('sample_id'),
+                    'sample_idx': sample_meta['sample_idx'],
+                    'qi': rec.get('qi'),
+                    'question': rec.get('question'),
+                    'expected': rec.get('expected'),
+                    'response': rec.get('response'),
+                    'category': rec.get('category'),
+                    'evidence': rec.get('evidence', []),
+                    'usage': rec.get('usage', {}),
+                }
+            )
 
     write_json(root_path / 'merged_answers.json', {'results': merged_results, 'generated_at': utc_now()})
-    write_json(root_path / 'ingest_token_summary.json', {'group': group, 'run_id': run_id, 'mode': mode, 'stage': stage, 'ingest_input_tokens_total': ingest_total, 'breakdown': ingest_breakdown})
-    write_json(root_path / 'qa_token_summary.json', {'group': group, 'run_id': run_id, 'mode': mode, 'stage': stage, 'qa_input_tokens_total': qa_total, 'breakdown': qa_breakdown})
-    write_json(root_path / 'pipeline_token_summary.json', {'group': group, 'run_id': run_id, 'mode': mode, 'stage': stage, 'visible_pipeline_input_tokens_total': ingest_total + qa_total, 'ingest_input_tokens_total': ingest_total, 'qa_input_tokens_total': qa_total})
+    write_json(
+        root_path / 'ingest_token_summary.json',
+        {
+            'group': group,
+            'run_id': run_id,
+            'mode': mode,
+            'stage': stage,
+            'ingest_input_tokens_total': ingest_total,
+            'breakdown': ingest_breakdown,
+        },
+    )
+    write_json(
+        root_path / 'qa_token_summary.json',
+        {
+            'group': group,
+            'run_id': run_id,
+            'mode': mode,
+            'stage': stage,
+            'qa_input_tokens_total': qa_total,
+            'breakdown': qa_breakdown,
+        },
+    )
+    write_json(
+        root_path / 'pipeline_token_summary.json',
+        {
+            'group': group,
+            'run_id': run_id,
+            'mode': mode,
+            'stage': stage,
+            'visible_pipeline_input_tokens_total': ingest_total + qa_total,
+            'ingest_input_tokens_total': ingest_total,
+            'qa_input_tokens_total': qa_total,
+        },
+    )
 
     grades_path = root_path / 'grades.json'
     completion_rate = None
@@ -98,7 +133,7 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     if grades_path.exists():
         grades = load_json(grades_path)
         completion_rate = grades.get('score')
-        cat = {}
+        cat: dict[str, dict[str, int]] = {}
         for item in grades.get('grades', []):
             key = str(item.get('category', 'unknown'))
             cat.setdefault(key, {'correct': 0, 'total': 0})
@@ -108,13 +143,13 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
         completion_by_category = cat
         write_json(root_path / 'completion_by_category.json', completion_by_category)
 
-    expected_qas = len(merged_results)
+    result_count = len(merged_results)
     if mode == 'full':
-        expected_qas_valid = expected_qas == 1540
+        expected_qas_valid = result_count == 1540
     elif stage == 'micro':
-        expected_qas_valid = expected_qas == 10
+        expected_qas_valid = result_count == 10
     else:
-        expected_qas_valid = expected_qas > 0
+        expected_qas_valid = result_count > 0
 
     expected_sample_count = EXPECTED_SAMPLE_COUNTS.get((mode, None if mode == 'full' else stage))
     sample_count_valid = sample_count == expected_sample_count if expected_sample_count is not None else True
@@ -122,9 +157,9 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     no_viking_flag = all('--viking' not in ' '.join(s['ingest_command']) and '--viking' not in ' '.join(s['qa_command']) for s in run_meta['samples'])
     parallel_valid = all(_parallel_is_one(s['qa_command']) for s in run_meta['samples'])
 
-    invalidity_reasons = []
+    invalidity_reasons: list[str] = []
     if not expected_qas_valid:
-        invalidity_reasons.append(f'benchmark count mismatch: expected filtered QA count not satisfied (got {expected_qas})')
+        invalidity_reasons.append(f'benchmark count mismatch: expected filtered QA count not satisfied (got {result_count})')
     if not sample_count_valid:
         invalidity_reasons.append(f'sample count mismatch: expected {expected_sample_count}, got {sample_count}')
     if not users_match:
@@ -150,6 +185,14 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
         if comparison.get('exact_subset_match') is not True:
             invalidity_reasons.append(f'{cfg_name} exact config mismatch vs frozen template')
 
+    runtime_arch = config_snapshot.get('runtime_architecture') or {}
+    if runtime_arch.get('overall_passed') is not True:
+        invalidity_reasons.append('runtime architecture proof failed or missing')
+        if group == 'row3-openviking-minus-core':
+            invalidity_reasons.append('row3 runtime did not prove legacy memory-slot path')
+        if group == 'row4-compat-primary':
+            invalidity_reasons.append('row4 runtime did not prove memory-core + contextEngine=openviking coexistence')
+
     if config_drift is None:
         invalidity_reasons.append('config_drift.json missing')
     elif config_drift.get('drift_detected'):
@@ -158,9 +201,9 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     if spec.get('openviking_mode') == 'local':
         if qa_total == 0:
             invalidity_reasons.append('OpenViking group produced qa_input_tokens_total == 0')
-        if qa_zero_usage == expected_qas:
+        if qa_zero_usage == result_count:
             invalidity_reasons.append('OpenViking group QA usage is all-zero across all records')
-        if qa_missing_usage == expected_qas:
+        if qa_missing_usage == result_count:
             invalidity_reasons.append('OpenViking group QA usage is missing across all records')
 
     pipeline_valid = len(invalidity_reasons) == 0
@@ -194,16 +237,20 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
         'visible_pipeline_input_tokens_total': ingest_total + qa_total,
         'qa_usage_missing_count': qa_missing_usage,
         'qa_usage_zero_count': qa_zero_usage,
-        'result_count': expected_qas,
+        'qa_usage_nonzero_count': qa_nonzero_usage,
+        'result_count': result_count,
         'sample_count': sample_count,
         'snapshot_id': spec.get('openviking_snapshot_id') or 'openclaw-only',
+        'runtime_architecture_status': 'passed' if runtime_arch.get('overall_passed') is True else 'failed',
+        'selected_memory_slot': runtime_arch.get('selected_memory_slot'),
+        'selected_context_engine_slot': runtime_arch.get('selected_context_engine_slot'),
+        'runtime_architecture_blocking_reasons': runtime_arch.get('blocking_reasons', []),
         'notes': notes,
         'generated_at': utc_now(),
     }
     write_json(root_path / 'run_summary.json', summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return root_path
-
 
 
 def main() -> None:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
+from typing import Any
+
+import requests
 
 from _common import (
     BENCHMARK_MANIFEST_PATH,
@@ -10,121 +12,63 @@ from _common import (
     GROUP_DEFS_PATH,
     OPENCLAW_EVAL_DIR,
     ROOT,
-    apply_env_file,
     collect_env_placeholders,
     get_group_spec,
     group_readiness,
     load_json,
-    missing_env_vars,
     merged_env,
+    missing_env_vars,
+    parse_json_text,
+    relpath,
     render_placeholders,
+    run_shell,
     sha256_file,
+    utc_now,
+    write_json,
 )
+from runtime_architecture import evaluate_runtime_architecture, normalize_runtime_architecture
 
 OPENCLAW_TEMPLATES = ROOT / 'env/openclaw_config_templates'
 OPENVIKING_TEMPLATES = ROOT / 'env/openviking_config_templates'
 PUBLIC_EVIDENCE_MANIFEST = ROOT / 'env/public_evidence_manifest.json'
-VERSIONS_MANIFEST = ROOT / 'env/versions_manifest.json'
+SOURCE_REGISTRY = ROOT / 'env/source_snapshot_registry.json'
 SOURCE_MANIFEST = ROOT / 'env/source_manifest.json'
+VERSIONS_MANIFEST = ROOT / 'env/versions_manifest.json'
 OFFICIAL_TARGETS = ROOT / 'official_targets.json'
+ENV_EXAMPLE = ROOT / '.env.example'
 
 ROW3_ALLOWED = {
-    'mode',
-    'configPath',
-    'port',
-    'baseUrl',
-    'agentId',
-    'apiKey',
-    'targetUri',
-    'timeoutMs',
-    'autoCapture',
-    'captureMode',
-    'captureMaxLength',
-    'autoRecall',
-    'recallLimit',
-    'recallScoreThreshold',
-    'ingestReplyAssist',
-    'ingestReplyAssistMinSpeakerTurns',
+    'mode', 'configPath', 'port', 'baseUrl', 'agentId', 'apiKey', 'targetUri', 'timeoutMs',
+    'autoCapture', 'captureMode', 'captureMaxLength', 'autoRecall', 'recallLimit',
+    'recallScoreThreshold', 'ingestReplyAssist', 'ingestReplyAssistMinSpeakerTurns',
     'ingestReplyAssistMinChars',
 }
-ROW3_REQUIRED = {
-    'mode',
-    'configPath',
-    'port',
-    'agentId',
-    'targetUri',
-    'timeoutMs',
-    'autoCapture',
-    'captureMode',
-    'captureMaxLength',
-    'autoRecall',
-    'recallLimit',
-    'recallScoreThreshold',
-    'ingestReplyAssist',
-    'ingestReplyAssistMinSpeakerTurns',
-    'ingestReplyAssistMinChars',
-}
+ROW3_REQUIRED = set(ROW3_ALLOWED) - {'baseUrl', 'apiKey'}
 ROW4_ALLOWED = {
-    'mode',
-    'configPath',
-    'port',
-    'baseUrl',
-    'agentId',
-    'apiKey',
-    'targetUri',
-    'timeoutMs',
-    'autoCapture',
-    'captureMode',
-    'captureMaxLength',
-    'autoRecall',
-    'recallLimit',
-    'recallScoreThreshold',
-    'recallMaxContentChars',
-    'recallPreferAbstract',
-    'recallTokenBudget',
-    'commitTokenThreshold',
-    'bypassSessionPatterns',
-    'ingestReplyAssist',
-    'ingestReplyAssistMinSpeakerTurns',
-    'ingestReplyAssistMinChars',
-    'ingestReplyAssistIgnoreSessionPatterns',
-    'emitStandardDiagnostics',
-    'logFindRequests',
+    'mode', 'configPath', 'port', 'baseUrl', 'agentId', 'apiKey', 'targetUri', 'timeoutMs',
+    'autoCapture', 'captureMode', 'captureMaxLength', 'autoRecall', 'recallLimit',
+    'recallScoreThreshold', 'recallMaxContentChars', 'recallPreferAbstract', 'recallTokenBudget',
+    'commitTokenThreshold', 'bypassSessionPatterns', 'ingestReplyAssist',
+    'ingestReplyAssistMinSpeakerTurns', 'ingestReplyAssistMinChars',
+    'ingestReplyAssistIgnoreSessionPatterns', 'emitStandardDiagnostics', 'logFindRequests',
 }
 ROW4_REQUIRED = {
-    'mode',
-    'configPath',
-    'port',
-    'agentId',
-    'targetUri',
-    'timeoutMs',
-    'autoCapture',
-    'captureMode',
-    'captureMaxLength',
-    'autoRecall',
-    'recallLimit',
-    'recallScoreThreshold',
-    'recallMaxContentChars',
-    'recallPreferAbstract',
-    'recallTokenBudget',
-    'commitTokenThreshold',
-    'bypassSessionPatterns',
-    'ingestReplyAssist',
-    'ingestReplyAssistMinSpeakerTurns',
-    'ingestReplyAssistMinChars',
-    'emitStandardDiagnostics',
-    'logFindRequests',
+    'mode', 'configPath', 'port', 'agentId', 'targetUri', 'timeoutMs', 'autoCapture',
+    'captureMode', 'captureMaxLength', 'autoRecall', 'recallLimit', 'recallScoreThreshold',
+    'recallMaxContentChars', 'recallPreferAbstract', 'recallTokenBudget', 'commitTokenThreshold',
+    'bypassSessionPatterns', 'ingestReplyAssist', 'ingestReplyAssistMinSpeakerTurns',
+    'ingestReplyAssistMinChars', 'emitStandardDiagnostics', 'logFindRequests',
 }
 
 
 def rel(path: Path) -> str:
     try:
-        return str(path.relative_to(ROOT))
+        return relpath(path)
     except Exception:
         return str(path)
 
 
-def get_plugin_entry(template: dict, plugin_id: str) -> tuple[dict | None, dict | None]:
+def get_plugin_entry(template: dict[str, Any], plugin_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     entries = template.get('plugins', {}).get('entries', {})
     entry = entries.get(plugin_id)
     if not isinstance(entry, dict):
@@ -140,10 +84,12 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
         GROUP_DEFS_PATH,
         CLAIM_DECISIONS_PATH,
         BENCHMARK_MANIFEST_PATH,
+        SOURCE_REGISTRY,
         SOURCE_MANIFEST,
         VERSIONS_MANIFEST,
         OFFICIAL_TARGETS,
         PUBLIC_EVIDENCE_MANIFEST,
+        ENV_EXAMPLE,
     ]
     for path in required:
         if not path.exists():
@@ -172,8 +118,19 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
         if raw_copy.exists() and sha256_file(raw_copy) != actual_sha:
             errors.append('benchmark raw copy sha != vendored locomo10.json sha')
 
+    registry = load_json(SOURCE_REGISTRY)
     manifest = load_json(SOURCE_MANIFEST)
+    if 'generated_at' in manifest:
+        errors.append('env/source_manifest.json should not contain volatile generated_at')
+    registry_ids = {item['snapshot_id'] for item in registry.get('snapshots', [])}
+    manifest_ids = {item['snapshot_id'] for item in manifest.get('snapshots', [])}
+    if registry_ids != manifest_ids:
+        errors.append('source manifest snapshot ids differ from source registry')
     for snap in manifest.get('snapshots', []):
+        if 'fetched_at' in snap:
+            errors.append(f"source manifest snapshot {snap.get('snapshot_id')} still uses fetched_at")
+        if 'vendored_at' not in snap:
+            errors.append(f"source manifest snapshot {snap.get('snapshot_id')} missing vendored_at")
         for file_item in snap.get('files', []):
             path = ROOT / file_item['path']
             if not path.exists():
@@ -185,14 +142,14 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
 
     versions = load_json(VERSIONS_MANIFEST)
     if versions.get('capture_status') != 'captured':
-        errors.append('env/versions_manifest.json is not captured; run python3 scripts/freeze_versions.py')
+        notes.append('env/versions_manifest.json is not captured yet; run python3 scripts/freeze_versions.py on the formal host before any official run')
     for required_group in ['row1-memory-core', 'row2-memory-lancedb', 'row3-openviking-minus-core', 'row4-compat-primary']:
-        if not group_readiness(required_group, versions):
+        if required_group not in (versions.get('group_readiness') or {}):
             errors.append(f'env/versions_manifest.json missing group_readiness for {required_group}')
     judge_files = versions.get('judge_freeze', {}).get('snapshot_files', {})
     for name in ['judge.py', 'judge_util.py']:
         item = judge_files.get(name, {})
-        if not item.get('sha256'):
+        if item and not item.get('sha256'):
             errors.append(f'judge freeze missing sha256 for {name}')
 
     defs = load_json(GROUP_DEFS_PATH)
@@ -212,13 +169,32 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
         errors.append('vendored eval.py no longer contains --viking flag; manual re-audit required')
     if 'default="[]"' not in eval_py and "default='[]'" not in eval_py:
         errors.append('vendored eval.py tail default audit failed')
-    if re.search(r'default\s*=\s*1', eval_py) is None:
-        notes.append('Could not positively verify parallel default=1 by regex; inspect manually.')
+    if 'parallel' not in eval_py:
+        notes.append('Could not positively verify parallel handling in vendored eval.py; inspect manually.')
 
     if defs['tail_literal'] != "[remember what's said, keep existing memory]":
         errors.append('tail literal drifted from frozen spec')
     if defs['parallel'] != 1:
         errors.append('parallel drifted from frozen spec')
+
+    evidence = load_json(PUBLIC_EVIDENCE_MANIFEST)
+    items = evidence.get('evidence_items')
+    if not isinstance(items, list) or not items:
+        errors.append('public evidence manifest must contain a non-empty evidence_items list')
+    else:
+        for item in items:
+            vendored = ROOT / item['vendored_local_path']
+            if not vendored.exists():
+                errors.append(f"public evidence file missing: {item['vendored_local_path']}")
+                continue
+            if sha256_file(vendored) != item['sha256']:
+                errors.append(f"public evidence sha mismatch: {item['vendored_local_path']}")
+            if '/blob/main/' in (item.get('blob_url') or ''):
+                errors.append(f"public evidence blob_url must be immutable, not main: {item['blob_url']}")
+    group_claims = evidence.get('group_claims') or {}
+    for group in ['row3-openviking-minus-core', 'row4-compat-primary']:
+        if group not in group_claims:
+            errors.append(f'public evidence manifest missing group_claims entry for {group}')
 
 
 def validate_templates(errors: list[str], notes: list[str]) -> None:
@@ -329,74 +305,165 @@ def validate_templates(errors: list[str], notes: list[str]) -> None:
         if key not in row4_ov.get('vlm', {}):
             errors.append(f'row4 OpenViking template missing vlm.{key}')
 
-    evidence = load_json(PUBLIC_EVIDENCE_MANIFEST)
-    if 'row3' not in evidence or 'row4' not in evidence:
-        errors.append('public evidence manifest must include row3 and row4 sections')
+
+def _run_runtime_architecture_online(group: str, env_map: dict[str, str]) -> dict[str, Any]:
+    spec = get_group_spec(group)
+    openclaw_path = Path(env_map['OPENCLAW_CONFIG_PATH']).expanduser()
+    actual_openclaw = load_json(openclaw_path)
+
+    list_cmd = env_map.get('OPENCLAW_PLUGINS_LIST_CMD', 'openclaw plugins list --json')
+    list_cp = run_shell(list_cmd, check=False, env=env_map)
+    inspect_template = env_map.get('OPENCLAW_PLUGIN_INSPECT_CMD_TEMPLATE', 'openclaw plugins inspect {plugin_id} --json')
+    inspect_stdout_map: dict[str, str] = {}
+    for plugin_id in spec.get('inspect_plugins', []):
+        cp = run_shell(inspect_template.format(plugin_id=plugin_id), check=False, env=env_map)
+        inspect_stdout_map[plugin_id] = cp.stdout
+
+    normalized = normalize_runtime_architecture(
+        list_stdout_text=list_cp.stdout,
+        inspect_stdout_map=inspect_stdout_map,
+        actual_openclaw_config=actual_openclaw,
+        spec=spec,
+    )
+    runtime_report = evaluate_runtime_architecture(spec, normalized)
+    return {
+        'list_returncode': list_cp.returncode,
+        'normalized': normalized,
+        'runtime_report': runtime_report,
+    }
 
 
-def validate_group_runtime(group: str, errors: list[str], notes: list[str]) -> None:
-    apply_env_file()
+def validate_group_runtime(group: str, run_id: str, online: bool, errors: list[str], notes: list[str]) -> Path:
     env_map = merged_env()
     spec = get_group_spec(group)
-    mapping = {'run_id': 'preflight', 'group': group}
+    mapping = {'run_id': run_id, 'group': group}
+    report: dict[str, Any] = {
+        'group': group,
+        'run_id': run_id,
+        'generated_at': utc_now(),
+        'online': online,
+        'materialization_ok': False,
+        'actual_config_paths_exist': False,
+        'runtime_architecture_ok': None,
+        'openviking_health_ok': None,
+        'blocking_reasons': [],
+        'notes': [],
+    }
 
     versions = load_json(VERSIONS_MANIFEST)
     readiness = group_readiness(group, versions)
     if not readiness:
-        errors.append(f'env/versions_manifest.json missing group_readiness for {group}')
+        report['blocking_reasons'].append(f'env/versions_manifest.json missing group_readiness for {group}')
+    elif versions.get('capture_status') != 'captured':
+        report['blocking_reasons'].append('env/versions_manifest.json is not captured; run python3 scripts/freeze_versions.py on the formal experiment host')
     elif not readiness.get('ready_for_formal_wrapper'):
-        errors.append(
+        report['blocking_reasons'].append(
             f'{group} is not ready per env/versions_manifest.json: ' + '; '.join(readiness.get('blocking_reasons') or ['unknown readiness failure'])
         )
 
     if env_map.get('OPENCLAW_BASE_URL') in (None, ''):
-        errors.append('missing OPENCLAW_BASE_URL for formal gateway runs')
+        report['blocking_reasons'].append('missing OPENCLAW_BASE_URL for formal gateway runs')
     if env_map.get('OPENCLAW_GATEWAY_TOKEN') in (None, ''):
-        errors.append('missing OPENCLAW_GATEWAY_TOKEN for formal gateway runs')
+        report['blocking_reasons'].append('missing OPENCLAW_GATEWAY_TOKEN for formal gateway runs')
 
     oc_template_path = OPENCLAW_TEMPLATES / f'{group}.json'
     ov_template_path = OPENVIKING_TEMPLATES / f'{group}.local.json'
-
+    materialization_errors = []
     for path in [oc_template_path, ov_template_path]:
         if not path.exists():
             continue
         template = load_json(path)
         unresolved = missing_env_vars(template, env_map)
         if unresolved:
-            errors.append(f'{rel(path)} missing env vars: {unresolved}')
+            materialization_errors.append(f'{rel(path)} missing env vars: {unresolved}')
         else:
             try:
                 render_placeholders(template, mapping, expand_env=True, env=env_map, strict_env=True)
             except Exception as exc:
-                errors.append(f'{rel(path)} could not be fully materialized: {exc}')
+                materialization_errors.append(f'{rel(path)} could not be fully materialized: {exc}')
+    if materialization_errors:
+        report['blocking_reasons'].extend(materialization_errors)
+    else:
+        report['materialization_ok'] = True
 
+    required_paths = {}
+    path_errors = []
     for env_name in spec.get('required_actual_configs', []):
         raw_value = (env_map.get(env_name) or '').strip()
         path_value = Path(raw_value).expanduser() if raw_value else None
-        if path_value is None or str(path_value).strip() == '.':
-            errors.append(f'{group} runtime requires env var {env_name}')
+        if path_value is None or not raw_value:
+            path_errors.append(f'{group} runtime requires env var {env_name}')
             continue
         if not path_value.exists():
-            errors.append(f'{group} runtime required config missing: {env_name} -> {path_value}')
+            path_errors.append(f'{group} runtime required config missing: {env_name} -> {path_value}')
+            continue
+        required_paths[env_name] = path_value
+    if path_errors:
+        report['blocking_reasons'].extend(path_errors)
+    else:
+        report['actual_config_paths_exist'] = True
+        report['actual_config_paths'] = {key: str(value) for key, value in required_paths.items()}
+
+    if online and report['actual_config_paths_exist']:
+        try:
+            runtime_online = _run_runtime_architecture_online(group, env_map)
+            runtime_report = runtime_online['runtime_report']
+            report['runtime_architecture_ok'] = runtime_report.get('overall_passed') is True
+            report['runtime_architecture'] = {
+                'list_returncode': runtime_online['list_returncode'],
+                'runtime_report': runtime_report,
+            }
+            if runtime_report.get('overall_passed') is not True:
+                report['blocking_reasons'].extend(runtime_report.get('blocking_reasons', []))
+        except Exception as exc:
+            report['runtime_architecture_ok'] = False
+            report['blocking_reasons'].append(f'online runtime architecture check failed: {exc}')
+
+        if spec.get('require_openviking_health'):
+            health_url = env_map.get('OPENVIKING_HEALTH_URL')
+            if not health_url:
+                report['openviking_health_ok'] = False
+                report['blocking_reasons'].append('OPENVIKING_HEALTH_URL missing for online preflight')
+            else:
+                try:
+                    resp = requests.get(health_url, timeout=10)
+                    report['openviking_health_ok'] = 200 <= resp.status_code < 300
+                    report['openviking_health'] = {'url': health_url, 'status_code': resp.status_code, 'body': resp.text[:1000]}
+                    if report['openviking_health_ok'] is not True:
+                        report['blocking_reasons'].append(f'OpenViking health endpoint returned {resp.status_code}')
+                except Exception as exc:
+                    report['openviking_health_ok'] = False
+                    report['blocking_reasons'].append(f'OpenViking health check failed: {exc}')
+
+    report_path = ROOT / 'reports' / 'preflight' / group / f'{run_id}.json'
+    write_json(report_path, report)
+    if report['blocking_reasons']:
+        errors.extend(report['blocking_reasons'])
+    return report_path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--group', default=None, help='Optionally validate env/materialization readiness for one group')
+    parser.add_argument('--run-id', default='preflight')
+    parser.add_argument('--online', action='store_true', help='Run runtime architecture and health checks against the live installation')
     args = parser.parse_args()
 
     errors: list[str] = []
     notes: list[str] = []
+    report_path: Path | None = None
 
     validate_repo_structure(errors, notes)
     if not errors:
         validate_templates(errors, notes)
     if args.group and not errors:
-        validate_group_runtime(args.group, errors, notes)
+        report_path = validate_group_runtime(args.group, args.run_id, args.online, errors, notes)
 
     print('Preflight notes:')
     for note in notes:
         print(f'  - {note}')
+    if report_path is not None:
+        print(f'Preflight report: {rel(report_path)}')
     if errors:
         print('Preflight errors:')
         for err in errors:

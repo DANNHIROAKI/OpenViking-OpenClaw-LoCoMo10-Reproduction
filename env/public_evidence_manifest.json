@@ -1,51 +1,89 @@
 {
-  "last_updated": "2026-04-12T00:00:00Z",
-  "official_table": {
-    "repo": "https://github.com/volcengine/OpenViking",
-    "page": "README_CN.md",
-    "facts": {
-      "dataset": "LoCoMo10 with category 5 removed -> 1540 QA cases",
-      "openviking_version": "0.1.18",
-      "task_model": "seed-2.0-code",
-      "eval_repo": "https://github.com/ZaynJarvis/openclaw-eval/tree/main"
-    }
-  },
-  "architecture_evidence": {
-    "current_public_openclaw_plugin_docs": {
-      "path": "OpenViking/examples/openclaw-plugin/INSTALL-ZH.md",
+  "manifest_version": 2,
+  "evidence_items": [
+    {
+      "evidence_id": "official-openclaw-result-table",
+      "upstream_repo": "https://github.com/volcengine/OpenViking",
+      "ref": "31577da",
+      "blob_url": "https://github.com/volcengine/OpenViking/blob/31577da/README_CN.md#L660-L675",
+      "vendored_local_path": "vendor/official-reference/volcengine-openviking/31577da/README_CN_excerpt_L660-L675.md",
+      "sha256": "cd515e3ecfa8f783cb9e74669f47c242f7130f43e91d00d8efcc2e4db7fa0dea",
+      "relevant_lines": "660-675",
       "claims": [
-        "Current openviking plugin config is under plugins.entries.openviking.config.",
-        "Current openviking plugin occupies the contextEngine slot.",
-        "Current openviking plugin is incompatible with the old memory-openviking plugin and cannot be mixed."
+        "official result-table facts",
+        "LoCoMo10 filtered size = 1540",
+        "official row family includes both -memory-core and +memory-core OpenViking rows",
+        "official table records OpenViking 0.1.18 and seed-2.0-code"
       ]
     },
-    "vendored_legacy_snapshot": {
-      "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9",
-      "plugin_id": "memory-openviking",
-      "kind": "memory",
-      "used_by_groups": [
-        "row3-openviking-minus-core",
-        "row4-exploratory-legacy-nonslot"
+    {
+      "evidence_id": "current-context-engine-install-doc",
+      "upstream_repo": "https://github.com/volcengine/OpenViking",
+      "ref": "f6a4b4e",
+      "blob_url": "https://github.com/volcengine/OpenViking/blob/f6a4b4e/examples/openclaw-plugin/INSTALL-ZH.md#L241-L367",
+      "vendored_local_path": "vendor/official-reference/volcengine-openviking/f6a4b4e/INSTALL-ZH_excerpt_L241-L367.md",
+      "sha256": "6cfffb52ccf150dfaf179c27f47e43db8f60c4e7fb8cc3bc2a747c37604961db",
+      "relevant_lines": "241-367",
+      "claims": [
+        "current public plugin path is context-engine",
+        "new openviking is incompatible with old memory-openviking",
+        "plugin config lives under plugins.entries.openviking.config",
+        "runtime validation can rely on plugins.slots.contextEngine"
       ]
     },
-    "vendored_current_context_engine_snapshot": {
-      "path": "vendor/openviking-context-engine/v0.3.5",
-      "plugin_id": "openviking",
-      "kind": "context-engine",
-      "compatibility_note": "install-manifest.json declares minOpenvikingVersion 0.2.9 and minOpenclawVersion 2026.3.7"
+    {
+      "evidence_id": "current-context-engine-plugin-readme",
+      "upstream_repo": "https://github.com/volcengine/OpenViking",
+      "ref": "2bc65f3",
+      "blob_url": "https://github.com/volcengine/OpenViking/blob/2bc65f3/examples/openclaw-plugin/README_CN.md#L241-L274",
+      "vendored_local_path": "vendor/official-reference/volcengine-openviking/2bc65f3/README_CN_excerpt_L241-L274.md",
+      "sha256": "2a259699271c4b19a6f9dc955ebda996994f3079318932ffa62d8bfe17ff994e",
+      "relevant_lines": "241-274",
+      "claims": [
+        "current public plugin registration is context-engine",
+        "row4 compatibility path is memory-core + contextEngine=openviking"
+      ]
+    },
+    {
+      "evidence_id": "legacy-openclaw-2026-3-11-workaround",
+      "upstream_repo": "https://github.com/volcengine/OpenViking",
+      "ref": "issue-591",
+      "blob_url": "https://github.com/volcengine/OpenViking/issues/591",
+      "vendored_local_path": "vendor/official-reference/volcengine-openviking/issue-591/issue_591_note.md",
+      "sha256": "576fa5cc8265e8e7c563f621dbe424720527d5062f8327cf7a6f631f42eadf69",
+      "relevant_lines": "issue narrative",
+      "claims": [
+        "legacy memory-openviking should avoid OpenClaw 2026.3.12",
+        "OpenClaw 2026.3.11 is the public workaround for the legacy path"
+      ]
     }
-  },
-  "row3": {
-    "target_claim_class": "strict",
-    "effective_claim_class": "compatibility",
-    "strict_gap": "A public immutable legacy snapshot is vendored, but there is not yet a public source that uniquely ties the official README row3 result to this exact snapshot."
-  },
-  "row4": {
-    "target_claim_class": "compatibility",
-    "effective_claim_class": "compatibility",
-    "structural_gap": [
-      "The current public openviking coexistence path is memory-core + contextEngine=openviking, not the legacy memory-slot path.",
-      "The current public context-engine snapshot declares minOpenvikingVersion 0.2.9, while the official README result table reports OpenViking 0.1.18."
-    ]
+  ],
+  "group_claims": {
+    "row3-openviking-minus-core": {
+      "target_claim_class": "strict",
+      "effective_claim_class": "compatibility",
+      "evidence_ids": [
+        "official-openclaw-result-table",
+        "current-context-engine-install-doc",
+        "legacy-openclaw-2026-3-11-workaround"
+      ],
+      "strict_upgrade_blockers": [
+        "A public immutable legacy memory-openviking snapshot is vendored, but the official row3 result line is still not uniquely tied to that exact historical public snapshot.",
+        "The current public docs describe the newer context-engine path, so public evidence still does not collapse the row3 ambiguity into a unique strict proof chain."
+      ]
+    },
+    "row4-compat-primary": {
+      "target_claim_class": "compatibility",
+      "effective_claim_class": "compatibility",
+      "evidence_ids": [
+        "official-openclaw-result-table",
+        "current-context-engine-install-doc",
+        "current-context-engine-plugin-readme"
+      ],
+      "structural_gap": [
+        "The current public coexistence path is memory-core + contextEngine=openviking, while the official table does not publicly prove that this exact path produced the historical row4 result.",
+        "The current public context-engine install line documents a newer runtime family than the official 0.1.18 row."
+      ]
+    }
   }
 }

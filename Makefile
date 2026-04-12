@@ -2,8 +2,9 @@ GROUP ?= row1-memory-core
 RUN_ID ?= manual-run
 STAGE ?= micro
 MODE ?= full
+RUNTIME_ENV_FILE := runtime_configs/$(RUN_ID)/$(GROUP)/exports.env
 
-.PHONY: benchmark source-manifest freeze-versions preflight preflight-group materialize probe micro extended full judge finalize verify summary claim-readiness repeatability audit-sample audit-summary tail-appendix
+.PHONY: benchmark source-manifest freeze-versions preflight preflight-group preflight-group-online materialize probe micro extended full judge finalize verify summary claim-readiness repeatability audit-sample audit-summary tail-appendix
 
 benchmark:
 	python3 scripts/build_benchmark.py
@@ -18,25 +19,35 @@ preflight:
 	python3 scripts/preflight.py
 
 preflight-group:
-	python3 scripts/preflight.py --group $(GROUP)
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) python3 scripts/preflight.py --group $(GROUP) --run-id $(RUN_ID)
+
+preflight-group-online:
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) python3 scripts/preflight.py --group $(GROUP) --run-id $(RUN_ID) --online
 
 materialize:
 	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID)
 
 probe:
-	./scripts/run_probe.sh $(GROUP) $(RUN_ID)
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) ./scripts/run_probe.sh $(GROUP) $(RUN_ID)
 
 micro:
-	./scripts/run_smoke.sh $(GROUP) $(RUN_ID) micro
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) ./scripts/run_smoke.sh $(GROUP) $(RUN_ID) micro
 
 extended:
-	./scripts/run_smoke.sh $(GROUP) $(RUN_ID) extended
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) ./scripts/run_smoke.sh $(GROUP) $(RUN_ID) extended
 
 full:
-	./scripts/run_full_group.sh $(GROUP) $(RUN_ID)
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) ./scripts/run_full_group.sh $(GROUP) $(RUN_ID)
 
 judge:
-	./scripts/run_judge.sh $(GROUP) $(RUN_ID) $(MODE) $(if $(filter smoke,$(MODE)),$(STAGE),)
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID) >/dev/null
+	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) ./scripts/run_judge.sh $(GROUP) $(RUN_ID) $(MODE) $(if $(filter smoke,$(MODE)),$(STAGE),)
 
 finalize:
 	python3 scripts/finalize_group.py $(GROUP) $(RUN_ID) --mode $(MODE) $(if $(filter smoke,$(MODE)),--stage $(STAGE),)
