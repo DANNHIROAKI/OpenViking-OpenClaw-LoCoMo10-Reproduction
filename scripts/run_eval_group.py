@@ -22,6 +22,7 @@ from _common import (
     get_claim_decision,
     get_group_spec,
     group_readiness,
+    is_relative_to,
     load_json,
     merged_env,
     path_label,
@@ -108,10 +109,36 @@ def _assert_benchmark_ready() -> None:
     if not BENCHMARK_MANIFEST_PATH.exists():
         raise SystemExit('missing benchmark/manifest.json; run python3 scripts/build_benchmark.py')
     manifest = load_json(BENCHMARK_MANIFEST_PATH)
-    if manifest.get('counts', {}).get('filtered_total_qas') != 1540:
+    counts = manifest.get('counts') or {}
+    if counts.get('filtered_total_qas') != 1540:
         raise SystemExit('benchmark/manifest.json does not certify 1540 filtered QA cases')
-    if manifest.get('counts', {}).get('raw_total_qas') != 1986:
+    if counts.get('raw_total_qas') != 1986:
         raise SystemExit('benchmark/manifest.json does not certify 1986 raw QA cases')
+
+    source = manifest.get('source') or {}
+    files = manifest.get('files') or {}
+    source_path = ROOT / str(source.get('path') or '')
+    raw_copy_path = ROOT / str(((files.get('locomo10_raw.json') or {}).get('path') or ''))
+    filtered_path = ROOT / str(((files.get('locomo10_filtered_no_cat5.json') or {}).get('path') or ''))
+
+    if not source_path.exists():
+        raise SystemExit(f'benchmark source file missing: {path_label(source_path)}')
+    if not raw_copy_path.exists():
+        raise SystemExit(f'benchmark raw copy missing: {path_label(raw_copy_path)}')
+    if not filtered_path.exists():
+        raise SystemExit(f'benchmark filtered file missing: {path_label(filtered_path)}')
+
+    source_sha = sha256_file(source_path)
+    if source.get('sha256') and source_sha != source.get('sha256'):
+        raise SystemExit('benchmark source sha256 drifted from manifest')
+    raw_sha = sha256_file(raw_copy_path)
+    if raw_sha != source_sha:
+        raise SystemExit('benchmark raw copy is not byte-identical to vendored source')
+    filtered_item = files.get('locomo10_filtered_no_cat5.json') or {}
+    if filtered_item.get('sha256') and sha256_file(filtered_path) != filtered_item.get('sha256'):
+        raise SystemExit('benchmark filtered file sha256 drifted from manifest')
+    if BENCHMARK_PATH.resolve() != filtered_path.resolve():
+        raise SystemExit('BENCHMARK_PATH drifted from benchmark manifest primary filtered path')
 
 
 
@@ -268,6 +295,9 @@ def _assert_materialization_binding(group: str, run_id: str, env: dict[str, str]
         raise SystemExit(f'materialization manifest run_id mismatch: expected {run_id}, got {manifest.get("run_id")}')
 
     exported = manifest.get('materialized_exports') or {}
+    runtime_isolation = manifest.get('runtime_isolation') or {}
+    storage_dir = storage_root(run_id, group).resolve()
+
     runtime_env_file = _resolve_env_path(exported.get('REPRO_RUNTIME_ENV_FILE') or env.get('REPRO_RUNTIME_ENV_FILE'))
     if runtime_env_file != runtime_env_path:
         raise SystemExit('runtime env file path drifted from materialization manifest')
@@ -286,11 +316,27 @@ def _assert_materialization_binding(group: str, run_id: str, env: dict[str, str]
     expected_openclaw = _resolve_env_path(exported.get('OPENCLAW_CONFIG_PATH'))
     if expected_openclaw != openclaw_config:
         raise SystemExit('OPENCLAW_CONFIG_PATH drifted from materialization manifest')
-    if openclaw_config.parent != runtime_dir:
+    if openclaw_config.parent.resolve() != runtime_dir.resolve():
         raise SystemExit('OPENCLAW_CONFIG_PATH is not located under the bound runtime materialization dir')
+
+    isolation_bindings: dict[str, str] = {}
+    for env_key, runtime_key in [('OPENCLAW_HOME', 'openclaw_home'), ('OPENCLAW_STATE_DIR', 'openclaw_state_dir')]:
+        resolved = _resolve_env_path(env.get(env_key) or exported.get(env_key) or runtime_isolation.get(runtime_key))
+        if resolved is None or not resolved.exists():
+            raise SystemExit(f'{env_key} missing or unreadable in runtime env')
+        exported_path = _resolve_env_path(exported.get(env_key))
+        if exported_path != resolved:
+            raise SystemExit(f'{env_key} drifted from materialization manifest')
+        runtime_isolation_path = _resolve_env_path(runtime_isolation.get(runtime_key))
+        if runtime_isolation_path is not None and runtime_isolation_path != resolved:
+            raise SystemExit(f'{env_key} drifted from materialization runtime_isolation')
+        if not is_relative_to(resolved, storage_dir):
+            raise SystemExit(f'{env_key} escaped bound storage root: {resolved}')
+        isolation_bindings[env_key] = str(resolved)
 
     spec = get_group_spec(group)
     openviking_config: str | None = None
+    workspace_path: str | None = None
     if spec.get('openviking_mode') == 'local':
         ov_path = _resolve_env_path(env.get('OPENVIKING_CONFIG_PATH'))
         if ov_path is None or not ov_path.exists():
@@ -298,9 +344,21 @@ def _assert_materialization_binding(group: str, run_id: str, env: dict[str, str]
         expected_ov = _resolve_env_path(exported.get('OPENVIKING_CONFIG_PATH'))
         if expected_ov != ov_path:
             raise SystemExit('OPENVIKING_CONFIG_PATH drifted from materialization manifest')
-        if ov_path.parent != runtime_dir:
+        if ov_path.parent.resolve() != runtime_dir.resolve():
             raise SystemExit('OPENVIKING_CONFIG_PATH is not located under the bound runtime materialization dir')
         openviking_config = str(ov_path)
+
+        workspace_resolved = _resolve_env_path(
+            env.get('OPENVIKING_WORKSPACE_PATH')
+            or exported.get('OPENVIKING_WORKSPACE_PATH')
+            or manifest.get('openviking_workspace_path')
+        )
+        if workspace_resolved is not None:
+            if not workspace_resolved.exists():
+                raise SystemExit(f'OPENVIKING_WORKSPACE_PATH not found: {workspace_resolved}')
+            if not is_relative_to(workspace_resolved, storage_dir):
+                raise SystemExit(f'OPENVIKING_WORKSPACE_PATH escaped bound storage root: {workspace_resolved}')
+            workspace_path = str(workspace_resolved)
 
     return {
         'runtime_env_file': str(runtime_env_path),
@@ -309,10 +367,38 @@ def _assert_materialization_binding(group: str, run_id: str, env: dict[str, str]
         'materialization_mode': manifest.get('materialization_mode'),
         'replaced_previous_dir': manifest.get('replaced_previous_dir'),
         'openclaw_config_path': str(openclaw_config),
+        'openclaw_home': isolation_bindings['OPENCLAW_HOME'],
+        'openclaw_state_dir': isolation_bindings['OPENCLAW_STATE_DIR'],
         'openviking_config_path': openviking_config,
-        'openviking_workspace_path': exported.get('OPENVIKING_WORKSPACE_PATH') or manifest.get('openviking_workspace_path'),
+        'openviking_workspace_path': workspace_path,
+        'runtime_isolation': runtime_isolation,
     }
 
+
+def _bound_runtime_env(base_env: dict[str, str], binding: dict[str, Any]) -> dict[str, str]:
+    env = dict(base_env)
+    for key in ['runtime_env_file', 'materialization_manifest', 'materialization_dir']:
+        value = binding.get(key)
+        if value:
+            env_key = {
+                'runtime_env_file': 'REPRO_RUNTIME_ENV_FILE',
+                'materialization_manifest': 'REPRO_MATERIALIZATION_MANIFEST',
+                'materialization_dir': 'REPRO_MATERIALIZATION_DIR',
+            }[key]
+            env[env_key] = str(value)
+
+    direct_mappings = {
+        'openclaw_config_path': 'OPENCLAW_CONFIG_PATH',
+        'openclaw_home': 'OPENCLAW_HOME',
+        'openclaw_state_dir': 'OPENCLAW_STATE_DIR',
+        'openviking_config_path': 'OPENVIKING_CONFIG_PATH',
+        'openviking_workspace_path': 'OPENVIKING_WORKSPACE_PATH',
+    }
+    for binding_key, env_key in direct_mappings.items():
+        value = binding.get(binding_key)
+        if value:
+            env[env_key] = str(value)
+    return env
 
 
 def _log_baseline(log_file: str | None) -> dict[str, Any] | None:
@@ -700,8 +786,9 @@ def _build_probe_gate_checks(
 def run_probe(group: str, run_id: str) -> None:
     spec = get_group_spec(group)
     required_paths = _runtime_gate(group)
-    env = merged_env()
-    binding = _assert_materialization_binding(group, run_id, env)
+    shell_env = merged_env()
+    binding = _assert_materialization_binding(group, run_id, shell_env)
+    env = _bound_runtime_env(shell_env, binding)
     base_url = env['OPENCLAW_BASE_URL']
     token = env['OPENCLAW_GATEWAY_TOKEN']
     user = f'repro-{run_id}-{group}-probe'
@@ -795,7 +882,6 @@ def run_probe(group: str, run_id: str) -> None:
         _write_config_drift(root_path, group, required_paths, config_start)
 
 
-
 def run_eval_stage(group: str, run_id: str, stage: str) -> None:
     if stage not in STAGE_PRESETS:
         raise SystemExit(f'unsupported stage: {stage}')
@@ -803,8 +889,9 @@ def run_eval_stage(group: str, run_id: str, stage: str) -> None:
     spec = get_group_spec(group)
     claim = get_claim_decision(group)
     required_paths = _runtime_gate(group)
-    env = merged_env()
-    binding = _assert_materialization_binding(group, run_id, env)
+    shell_env = merged_env()
+    binding = _assert_materialization_binding(group, run_id, shell_env)
+    env = _bound_runtime_env(shell_env, binding)
     base_url = env['OPENCLAW_BASE_URL']
     token = env['OPENCLAW_GATEWAY_TOKEN']
     eval_python = env.get('EVAL_PYTHON', 'python3')
@@ -815,12 +902,14 @@ def run_eval_stage(group: str, run_id: str, stage: str) -> None:
     ensure_fresh_dir(root_path, 'run root')
 
     storage = storage_root(run_id, group)
-    ensure_fresh_dir(storage, 'storage root')
+    ensure_dir(storage)
+    ensure_dir(Path(binding['openclaw_home']))
+    ensure_dir(Path(binding['openclaw_state_dir']))
     ensure_dir(storage / 'cache')
     if spec['expected_storage'].get('lancedb'):
         ensure_dir(storage / 'lancedb')
-    if spec['expected_storage'].get('openviking_workspace'):
-        ensure_dir(storage / 'openviking-workspace')
+    if spec['expected_storage'].get('openviking_workspace') and binding.get('openviking_workspace_path'):
+        ensure_dir(Path(binding['openviking_workspace_path']))
 
     config_start = _current_config_state(group, required_paths)
     try:
@@ -842,6 +931,7 @@ def run_eval_stage(group: str, run_id: str, stage: str) -> None:
             'samples': preset['samples'],
             'qa_count': preset['qa_count'],
             'benchmark_path': relpath(BENCHMARK_PATH),
+            'benchmark_manifest_path': relpath(BENCHMARK_MANIFEST_PATH),
             'openclaw_base_url': base_url,
             'gateway_only': True,
             'forbid_eval_viking_flag': True,
@@ -852,6 +942,11 @@ def run_eval_stage(group: str, run_id: str, stage: str) -> None:
             'materialization_dir': binding['materialization_dir'],
             'runtime_env_file': binding['runtime_env_file'],
             'materialization_mode': binding.get('materialization_mode'),
+            'runtime_isolation': {
+                'openclaw_home': binding['openclaw_home'],
+                'openclaw_state_dir': binding['openclaw_state_dir'],
+                'openviking_workspace_path': binding.get('openviking_workspace_path'),
+            },
             'openviking_workspace_path': binding.get('openviking_workspace_path'),
             'created_at': utc_now(),
         }
@@ -902,12 +997,12 @@ def run_eval_stage(group: str, run_id: str, stage: str) -> None:
             if preset['qa_count'] is not None:
                 qa_cmd.extend(['--count', str(preset['qa_count'])])
 
-            ingest_cp = subprocess.run(ingest_cmd, text=True, capture_output=True, env=env)
+            ingest_cp = subprocess.run(ingest_cmd, text=True, capture_output=True, env=env, cwd=ROOT)
             (sroot / 'ingest.console.log').write_text((ingest_cp.stdout or '') + '\n' + (ingest_cp.stderr or ''), encoding='utf-8')
             if ingest_cp.returncode != 0:
                 raise SystemExit(f'ingest failed for {group} sample {sample_idx}; see {relpath(sroot / "ingest.console.log")}')
 
-            qa_cp = subprocess.run(qa_cmd, text=True, capture_output=True, env=env)
+            qa_cp = subprocess.run(qa_cmd, text=True, capture_output=True, env=env, cwd=ROOT)
             (sroot / 'qa.console.log').write_text((qa_cp.stdout or '') + '\n' + (qa_cp.stderr or ''), encoding='utf-8')
             if qa_cp.returncode != 0:
                 raise SystemExit(f'qa failed for {group} sample {sample_idx}; see {relpath(sroot / "qa.console.log")}')
@@ -940,7 +1035,6 @@ def run_eval_stage(group: str, run_id: str, stage: str) -> None:
         print(json.dumps({'run_root': relpath(root_path), 'stage': stage, 'mode': mode, 'samples': preset['samples']}, ensure_ascii=False, indent=2))
     finally:
         _write_config_drift(root_path, group, required_paths, config_start)
-
 
 
 def main() -> None:

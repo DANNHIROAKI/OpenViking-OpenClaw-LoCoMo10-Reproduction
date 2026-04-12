@@ -16,6 +16,7 @@ from _common import (
     missing_env_vars,
     parse_json_text,
     path_label,
+    redact_sensitive_tree,
     render_materialized_config,
     render_placeholders,
     run_shell,
@@ -29,6 +30,7 @@ from runtime_architecture import evaluate_runtime_architecture, normalize_runtim
 
 OPENCLAW_TEMPLATES = ROOT / 'env/openclaw_config_templates'
 OPENVIKING_TEMPLATES = ROOT / 'env/openviking_config_templates'
+VERSIONS_MANIFEST = ROOT / 'env/versions_manifest.json'
 
 
 def _load_json_loose(path: Path) -> tuple[Any | None, str | None]:
@@ -41,7 +43,8 @@ def _load_json_loose(path: Path) -> tuple[Any | None, str | None]:
 def _compare_template_to_actual(
     *,
     template_obj: dict[str, Any],
-    actual_path: Path | None,
+    actual_json: Any | None,
+    actual_parse_error: str | None,
     mapping: dict[str, str],
     env: dict[str, str],
 ) -> dict[str, Any]:
@@ -49,24 +52,18 @@ def _compare_template_to_actual(
     comparison: dict[str, Any] = {
         'required_env_vars': env_vars,
         'missing_env_vars': missing_env_vars(template_obj, env),
-        'actual_json_parsed': False,
-        'actual_json_parse_error': None,
+        'actual_json_parsed': actual_json is not None,
+        'actual_json_parse_error': actual_parse_error,
         'structural_subset_match': None,
         'structural_mismatches': [],
         'exact_subset_match': None,
         'exact_mismatches': [],
     }
 
-    if actual_path is None or not actual_path.exists():
-        comparison['actual_json_parse_error'] = 'actual config file missing'
+    if actual_json is None:
+        if comparison['actual_json_parse_error'] is None:
+            comparison['actual_json_parse_error'] = 'actual config file missing'
         return comparison
-
-    actual_json, parse_error = _load_json_loose(actual_path)
-    if parse_error:
-        comparison['actual_json_parse_error'] = parse_error
-        return comparison
-
-    comparison['actual_json_parsed'] = True
 
     rendered_structural = strip_repro_meta(render_placeholders(template_obj, mapping, expand_env=False, strict_env=False))
     structural_mismatches = subset_mismatches(rendered_structural, actual_json)
@@ -83,21 +80,88 @@ def _compare_template_to_actual(
     return comparison
 
 
-def _maybe_copy_actual(src: str | None, dest_dir: Path, stem: str) -> tuple[dict[str, Any], Path | None]:
+def _private_snapshot_dir(run_id: str, group: str) -> Path:
+    return ensure_dir(ROOT / 'storage' / run_id / group / 'private_snapshots')
+
+
+def _capture_actual_snapshot(
+    *,
+    requested_path: str | None,
+    public_dir: Path,
+    private_dir: Path,
+    public_stem: str,
+    private_name_base: str,
+) -> tuple[dict[str, Any], Path | None, Any | None, str | None]:
     info: dict[str, Any] = {}
-    if not src:
-        return info, None
-    path = Path(src).expanduser()
+    if not requested_path:
+        return info, None, None, 'actual config path not provided'
+
+    path = Path(requested_path).expanduser()
+    if not path.is_absolute():
+        path = path.resolve()
+    info['actual_snapshot_path_requested'] = str(path)
     if not path.exists():
         info['actual_snapshot_missing'] = True
-        info['actual_snapshot_path_requested'] = str(path)
-        return info, path
-    dest = dest_dir / f'{stem}.actual{path.suffix or ".snapshot"}'
-    shutil.copy2(path, dest)
-    info['actual_snapshot'] = str(dest.relative_to(ROOT))
-    info['actual_sha256'] = sha256_file(dest)
-    info['actual_snapshot_path_requested'] = str(path)
-    return info, path
+        return info, path, None, 'actual config file missing'
+
+    ensure_dir(public_dir)
+    ensure_dir(private_dir)
+    private_dest = private_dir / f'{private_name_base}.actual.raw{path.suffix or ".json"}'
+    shutil.copy2(path, private_dest)
+
+    raw_json, parse_error = _load_json_loose(path)
+    public_dest = public_dir / f'{public_stem}.actual.redacted.json'
+    if raw_json is None:
+        write_json(
+            public_dest,
+            {
+                '_capture_error': 'actual config could not be parsed as JSON; raw public snapshot omitted',
+                'requested_path': str(path),
+                'private_raw_snapshot': str(private_dest.relative_to(ROOT)),
+            },
+        )
+        redacted_paths: list[str] = []
+        redaction_applied = True
+    else:
+        redacted_json, redacted_paths = redact_sensitive_tree(raw_json)
+        write_json(public_dest, redacted_json)
+        redaction_applied = True
+
+    info.update(
+        {
+            'actual_snapshot': str(public_dest.relative_to(ROOT)),
+            'actual_snapshot_public': str(public_dest.relative_to(ROOT)),
+            'actual_snapshot_private': str(private_dest.relative_to(ROOT)),
+            'actual_sha256': sha256_file(public_dest),
+            'actual_redacted_sha256': sha256_file(public_dest),
+            'actual_unredacted_sha256': sha256_file(private_dest),
+            'redaction_applied': redaction_applied,
+            'redacted_paths': redacted_paths,
+        }
+    )
+    return info, path, raw_json, parse_error
+
+
+def _load_materialization_context(env: dict[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
+    manifest: dict[str, Any] = {}
+    runtime_audit_freeze: dict[str, Any] = {}
+
+    manifest_raw = env.get('REPRO_MATERIALIZATION_MANIFEST')
+    if manifest_raw:
+        manifest_path = Path(manifest_raw).expanduser()
+        if not manifest_path.is_absolute():
+            manifest_path = (ROOT / manifest_path).resolve()
+        if manifest_path.exists():
+            manifest = load_json(manifest_path)
+            runtime_audit_freeze = manifest.get('runtime_audit_freeze') or {}
+    return manifest, runtime_audit_freeze
+
+
+def _load_versions_group_specific_runtime_freeze(group: str) -> dict[str, Any]:
+    if not VERSIONS_MANIFEST.exists():
+        return {}
+    versions = load_json(VERSIONS_MANIFEST)
+    return {group: ((versions.get('group_specific_runtime_freeze') or {}).get(group) or {})}
 
 
 def capture_group_snapshot(group: str, run_id: str, run_root: Path) -> dict[str, Any]:
@@ -111,12 +175,18 @@ def capture_group_snapshot(group: str, run_id: str, run_root: Path) -> dict[str,
 
     oc_snapshot_dir = ensure_dir(ROOT / 'env/openclaw_config_snapshots' / run_id)
     ov_snapshot_dir = ensure_dir(ROOT / 'env/openviking_config_snapshots' / run_id)
+    private_snapshot_dir = _private_snapshot_dir(run_id, group)
+    materialization_manifest, runtime_audit_freeze = _load_materialization_context(env)
 
     summary: dict[str, Any] = {
         'group': group,
         'run_id': run_id,
         'captured_at': utc_now(),
         'claim_class': claim['effective_claim_class'],
+        'materialization_manifest': env.get('REPRO_MATERIALIZATION_MANIFEST'),
+        'runtime_isolation': materialization_manifest.get('runtime_isolation') or {},
+        'runtime_audit_freeze': runtime_audit_freeze,
+        'versions_group_specific_runtime_freeze': _load_versions_group_specific_runtime_freeze(group),
         'openclaw': {},
         'openviking': {},
         'plugin_inventory': {},
@@ -141,12 +211,19 @@ def capture_group_snapshot(group: str, run_id: str, run_root: Path) -> dict[str,
         summary['openviking']['expected_snapshot'] = str(expected_path.relative_to(ROOT))
         summary['openviking']['expected_sha256'] = sha256_file(expected_path)
 
-    oc_actual_info, oc_actual_path = _maybe_copy_actual(env.get('OPENCLAW_CONFIG_PATH'), oc_snapshot_dir, group)
+    oc_actual_info, oc_actual_path, oc_actual_json, oc_parse_error = _capture_actual_snapshot(
+        requested_path=env.get('OPENCLAW_CONFIG_PATH'),
+        public_dir=oc_snapshot_dir,
+        private_dir=private_snapshot_dir,
+        public_stem=group,
+        private_name_base='openclaw',
+    )
     summary['openclaw'].update(oc_actual_info)
     if oc_template is not None:
         summary['openclaw']['comparison'] = _compare_template_to_actual(
             template_obj=oc_template,
-            actual_path=oc_actual_path,
+            actual_json=oc_actual_json,
+            actual_parse_error=oc_parse_error,
             mapping=mapping,
             env=env,
         )
@@ -154,12 +231,19 @@ def capture_group_snapshot(group: str, run_id: str, run_root: Path) -> dict[str,
         write_json(compare_path, summary['openclaw']['comparison'])
         summary['openclaw']['comparison_report'] = str(compare_path.relative_to(ROOT))
 
-    ov_actual_info, ov_actual_path = _maybe_copy_actual(env.get('OPENVIKING_CONFIG_PATH'), ov_snapshot_dir, group)
+    ov_actual_info, ov_actual_path, ov_actual_json, ov_parse_error = _capture_actual_snapshot(
+        requested_path=env.get('OPENVIKING_CONFIG_PATH'),
+        public_dir=ov_snapshot_dir,
+        private_dir=private_snapshot_dir,
+        public_stem=group,
+        private_name_base='openviking',
+    )
     summary['openviking'].update(ov_actual_info)
     if ov_template is not None:
         summary['openviking']['comparison'] = _compare_template_to_actual(
             template_obj=ov_template,
-            actual_path=ov_actual_path,
+            actual_json=ov_actual_json,
+            actual_parse_error=ov_parse_error,
             mapping=mapping,
             env=env,
         )
@@ -208,7 +292,7 @@ def capture_group_snapshot(group: str, run_id: str, run_root: Path) -> dict[str,
         inspect_outputs.append(item)
     summary['plugin_inventory']['inspect_outputs'] = inspect_outputs
 
-    actual_openclaw_config = load_json(oc_actual_path) if oc_actual_path and oc_actual_path.exists() else {}
+    actual_openclaw_config = oc_actual_json if isinstance(oc_actual_json, dict) else {}
     normalized = normalize_runtime_architecture(
         list_stdout_text=cp.stdout,
         inspect_stdout_map=inspect_stdout_map,
@@ -241,9 +325,9 @@ def main() -> None:
     args = parser.parse_args()
     run_root = Path(args.run_root)
     ensure_dir(run_root)
-    result = capture_group_snapshot(args.group, args.run_id, run_root)
+    snapshot = capture_group_snapshot(args.group, args.run_id, run_root)
     print(path_label(run_root / 'config_snapshot.json'))
-    if result.get('runtime_architecture', {}).get('overall_passed') is not True:
+    if snapshot.get('runtime_architecture', {}).get('overall_passed') is not True:
         raise SystemExit(2)
 
 

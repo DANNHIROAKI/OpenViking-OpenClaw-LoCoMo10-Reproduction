@@ -5,15 +5,24 @@ import json
 from pathlib import Path
 from typing import Any
 
-from _common import PARALLEL, TAIL_LITERAL, get_claim_decision, get_group_spec, load_json, run_root, user_id, utc_now, write_json
-
+from _common import (
+    BENCHMARK_MANIFEST_PATH,
+    PARALLEL,
+    TAIL_LITERAL,
+    get_claim_decision,
+    get_group_spec,
+    load_json,
+    run_root,
+    user_id,
+    utc_now,
+    write_json,
+)
 
 EXPECTED_SAMPLE_COUNTS = {
     ('full', None): 10,
     ('smoke', 'micro'): 1,
     ('smoke', 'extended'): 2,
 }
-
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -26,7 +35,6 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return items
 
 
-
 def _flag_values(cmd: list[str], flag: str) -> list[str]:
     values: list[str] = []
     for idx, item in enumerate(cmd):
@@ -37,13 +45,11 @@ def _flag_values(cmd: list[str], flag: str) -> list[str]:
     return values
 
 
-
 def _single_flag_value(cmd: list[str], flag: str) -> str | None:
     values = _flag_values(cmd, flag)
     if len(values) != 1:
         return None
     return values[0]
-
 
 
 def _parallel_is_one(cmd: list[str]) -> bool:
@@ -55,16 +61,68 @@ def _parallel_is_one(cmd: list[str]) -> bool:
     return False
 
 
-
 def _expected_user(run_id: str, group: str, sample_idx: int) -> str:
     return user_id(run_id, group, sample_idx)
-
 
 
 def _append_once(items: list[str], reason: str) -> None:
     if reason not in items:
         items.append(reason)
 
+
+def _benchmark_manifest() -> dict[str, Any]:
+    if not BENCHMARK_MANIFEST_PATH.exists():
+        return {}
+    return load_json(BENCHMARK_MANIFEST_PATH)
+
+
+def _expected_result_count(mode: str, stage: str | None, run_spec: dict[str, Any]) -> int | None:
+    manifest = _benchmark_manifest()
+    counts = manifest.get('counts') or {}
+    per_sample = manifest.get('per_sample') or []
+
+    if mode == 'full':
+        value = counts.get('filtered_total_qas')
+        return int(value) if value is not None else 1540
+
+    samples = run_spec.get('samples')
+    qa_count = run_spec.get('qa_count')
+    if isinstance(samples, list) and samples:
+        if qa_count is not None:
+            try:
+                return len(samples) * int(qa_count)
+            except Exception:
+                pass
+        total = 0
+        try:
+            for sample_idx in samples:
+                total += int((per_sample[sample_idx] or {}).get('kept_cases') or 0)
+            if total > 0:
+                return total
+        except Exception:
+            pass
+
+    if stage == 'micro':
+        try:
+            return int(qa_count) if qa_count is not None else 10
+        except Exception:
+            return 10
+    if stage == 'extended':
+        if len(per_sample) >= 2:
+            return int((per_sample[0] or {}).get('kept_cases') or 0) + int((per_sample[1] or {}).get('kept_cases') or 0)
+        return 233
+    return None
+
+
+def _expected_sample_count(mode: str, stage: str | None, run_spec: dict[str, Any]) -> int | None:
+    samples = run_spec.get('samples')
+    if isinstance(samples, list) and samples:
+        return len(samples)
+    return EXPECTED_SAMPLE_COUNTS.get((mode, None if mode == 'full' else stage))
+
+
+def _config_block_has_actual_snapshot(block: dict[str, Any]) -> bool:
+    return bool(block.get('actual_snapshot_public') or block.get('actual_snapshot'))
 
 
 def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
@@ -177,14 +235,10 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
         write_json(root_path / 'completion_by_category.json', completion_by_category)
 
     result_count = len(merged_results)
-    if mode == 'full':
-        expected_qas_valid = result_count == 1540
-    elif stage == 'micro':
-        expected_qas_valid = result_count == 10
-    else:
-        expected_qas_valid = result_count > 0
+    expected_result_count = _expected_result_count(mode, stage, run_spec)
+    expected_qas_valid = result_count == expected_result_count if expected_result_count is not None else result_count > 0
 
-    expected_sample_count = EXPECTED_SAMPLE_COUNTS.get((mode, None if mode == 'full' else stage))
+    expected_sample_count = _expected_sample_count(mode, stage, run_spec)
     sample_count_valid = sample_count == expected_sample_count if expected_sample_count is not None else True
     users_match = all(s['ingest_user'] == s['qa_user'] for s in run_meta['samples'])
     no_viking_flag = all('--viking' not in ' '.join(s['ingest_command']) and '--viking' not in ' '.join(s['qa_command']) for s in run_meta['samples'])
@@ -192,7 +246,9 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
 
     invalidity_reasons: list[str] = []
     if not expected_qas_valid:
-        invalidity_reasons.append(f'benchmark count mismatch: expected filtered QA count not satisfied (got {result_count})')
+        invalidity_reasons.append(
+            f'benchmark count mismatch: expected filtered QA count not satisfied (expected {expected_result_count}, got {result_count})'
+        )
     if not sample_count_valid:
         invalidity_reasons.append(f'sample count mismatch: expected {expected_sample_count}, got {sample_count}')
     if not users_match:
@@ -234,7 +290,7 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
         if cfg_name == 'openviking' and spec.get('openviking_mode') is None:
             continue
         cfg_block = config_snapshot.get(cfg_name, {})
-        if not cfg_block.get('actual_snapshot'):
+        if not _config_block_has_actual_snapshot(cfg_block):
             invalidity_reasons.append(f'{cfg_name} actual config snapshot missing')
             continue
         comparison = cfg_block.get('comparison') or {}
@@ -266,6 +322,11 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
             invalidity_reasons.append('OpenViking group QA usage is all-zero across all records')
         if qa_missing_usage == result_count:
             invalidity_reasons.append('OpenViking group QA usage is missing across all records')
+
+    if group == 'row2-memory-lancedb':
+        runtime_audit = ((config_snapshot.get('runtime_audit_freeze') or {}).get(group) or {})
+        if not runtime_audit.get('lancedb_embedding_provider'):
+            invalidity_reasons.append('row2 runtime_audit_freeze missing lancedb_embedding_provider')
 
     pipeline_valid = len(invalidity_reasons) == 0
     notes = []
@@ -300,7 +361,9 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
         'qa_usage_zero_count': qa_zero_usage,
         'qa_usage_nonzero_count': qa_nonzero_usage,
         'result_count': result_count,
+        'expected_result_count': expected_result_count,
         'sample_count': sample_count,
+        'expected_sample_count': expected_sample_count,
         'snapshot_id': spec.get('openviking_snapshot_id') or 'openclaw-only',
         'runtime_architecture_status': 'passed' if runtime_arch.get('overall_passed') is True else 'failed',
         'selected_memory_slot': runtime_arch.get('selected_memory_slot'),
@@ -312,7 +375,6 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     write_json(root_path / 'run_summary.json', summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return root_path
-
 
 
 def main() -> None:
