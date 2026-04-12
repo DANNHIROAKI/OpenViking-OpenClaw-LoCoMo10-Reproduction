@@ -1,28 +1,36 @@
 {
-  "official_source": "https://github.com/volcengine/OpenViking/blob/main/README_CN.md#openclaw-上下文插件详情",
-  "dataset": "LoCoMo10 filtered to 1540 QA cases after removing category 5",
-  "openviking_version": "0.1.18",
-  "model": "seed-2.0-code",
-  "groups": {
-    "row1-memory-core": {
-      "label": "OpenClaw(memory-core)",
-      "target_task_completion_rate": 0.3565,
-      "target_input_tokens_total": 24611530
+  "source": {
+    "repo": "volcengine/OpenViking",
+    "readme_cn_anchor": "https://github.com/volcengine/OpenViking/blob/main/README_CN.md#openclaw-上下文插件详情",
+    "dataset": "LoCoMo10 with category 5 removed (1540 QA cases)",
+    "openviking_runtime_version": "0.1.18",
+    "task_model": "seed-2.0-code",
+    "eval_repo": "ZaynJarvis/openclaw-eval"
+  },
+  "rows": [
+    {
+      "group": "row1-memory-core",
+      "official_label": "OpenClaw(memory-core)",
+      "official_completion_rate": 0.3565,
+      "official_input_tokens_total": 24611530
     },
-    "row2-memory-lancedb": {
-      "label": "OpenClaw + LanceDB (-memory-core)",
-      "target_task_completion_rate": 0.4455,
-      "target_input_tokens_total": 51574530
+    {
+      "group": "row2-memory-lancedb",
+      "official_label": "OpenClaw + LanceDB (-memory-core)",
+      "official_completion_rate": 0.4455,
+      "official_input_tokens_total": 51574530
     },
-    "row3-openviking-minus-core": {
-      "label": "OpenClaw + OpenViking Plugin (-memory-core)",
-      "target_task_completion_rate": 0.5208,
-      "target_input_tokens_total": 4264396
+    {
+      "group": "row3-openviking-minus-core",
+      "official_label": "OpenClaw + OpenViking Plugin (-memory-core)",
+      "official_completion_rate": 0.5208,
+      "official_input_tokens_total": 4264396
     },
-    "row4-openviking-plus-core": {
-      "label": "OpenClaw + OpenViking Plugin (+memory-core)",
-      "target_task_completion_rate": 0.5123,
-      "target_input_tokens_total": 2099622
+    {
+      "group": "row4-compat-primary",
+      "official_label": "OpenClaw + OpenViking Plugin (+memory-core)",
+      "official_completion_rate": 0.5123,
+      "official_input_tokens_total": 2099622
     }
-  }
+  ]
 }

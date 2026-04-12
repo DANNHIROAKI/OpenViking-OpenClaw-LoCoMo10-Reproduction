@@ -1,0 +1,39 @@
+{
+  "__repro_meta__": {
+    "group": "row3-openviking-minus-core",
+    "claim_class": "compatibility",
+    "snapshot_id": "6c60a1d2fb2debd5ac990831350e995473feb6e9",
+    "notes": [
+      "Legacy memory-openviking route; do not replace with the current context-engine openviking plugin.",
+      "All behavior-affecting plugin defaults are materialized explicitly."
+    ]
+  },
+  "plugins": {
+    "slots": {
+      "memory": "memory-openviking",
+      "contextEngine": "legacy"
+    },
+    "entries": {
+      "memory-openviking": {
+        "enabled": true,
+        "config": {
+          "mode": "local",
+          "configPath": "${OPENVIKING_CONFIG_PATH}",
+          "port": "${OPENVIKING_SERVER_PORT}",
+          "agentId": "default",
+          "targetUri": "viking://user/memories",
+          "timeoutMs": 15000,
+          "autoCapture": true,
+          "captureMode": "semantic",
+          "captureMaxLength": 24000,
+          "autoRecall": true,
+          "recallLimit": 6,
+          "recallScoreThreshold": 0.01,
+          "ingestReplyAssist": true,
+          "ingestReplyAssistMinSpeakerTurns": 2,
+          "ingestReplyAssistMinChars": 120
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "__repro_meta__": {
+    "group": "row4-compat-primary",
+    "claim_class": "compatibility",
+    "snapshot_id": "v0.3.5",
+    "notes": [
+      "Current public coexistence path: memory-core + contextEngine=openviking.",
+      "All behavior-affecting plugin defaults are materialized explicitly.",
+      "This track is compatibility only; do not promote it to strict without public historical equivalence evidence."
+    ]
+  },
+  "plugins": {
+    "slots": {
+      "memory": "memory-core",
+      "contextEngine": "openviking"
+    },
+    "entries": {
+      "openviking": {
+        "enabled": true,
+        "config": {
+          "mode": "local",
+          "configPath": "${OPENVIKING_CONFIG_PATH}",
+          "port": "${OPENVIKING_SERVER_PORT}",
+          "agentId": "default",
+          "targetUri": "viking://user/memories",
+          "timeoutMs": 15000,
+          "autoCapture": true,
+          "captureMode": "semantic",
+          "captureMaxLength": 24000,
+          "autoRecall": true,
+          "recallLimit": 6,
+          "recallScoreThreshold": 0.15,
+          "recallMaxContentChars": 500,
+          "recallPreferAbstract": false,
+          "recallTokenBudget": 2000,
+          "commitTokenThreshold": 20000,
+          "bypassSessionPatterns": [],
+          "ingestReplyAssist": false,
+          "ingestReplyAssistMinSpeakerTurns": 2,
+          "ingestReplyAssistMinChars": 120,
+          "emitStandardDiagnostics": false,
+          "logFindRequests": false
+        }
+      }
+    }
+  }
+}

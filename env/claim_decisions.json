@@ -1,0 +1,48 @@
+{
+  "last_updated": "2026-04-12T00:00:00Z",
+  "decisions": [
+    {
+      "group": "row1-memory-core",
+      "target_claim_class": "strict",
+      "effective_claim_class": "strict",
+      "public_evidence_status": "sufficient_for_strict_candidate",
+      "decision_basis": "No architecture ambiguity beyond OpenClaw version and gateway model freeze."
+    },
+    {
+      "group": "row2-memory-lancedb",
+      "target_claim_class": "strict",
+      "effective_claim_class": "strict",
+      "public_evidence_status": "sufficient_for_strict_candidate",
+      "decision_basis": "Memory slot replacement path is publicly documented and can be frozen with explicit embedding config."
+    },
+    {
+      "group": "row3-openviking-minus-core",
+      "target_claim_class": "strict",
+      "effective_claim_class": "compatibility",
+      "public_evidence_status": "public_legacy_snapshot_found_but_official_row_not_uniquely_proven",
+      "strict_upgrade_blockers": [
+        "Need a public immutable legacy memory-openviking snapshot that can be uniquely tied to the official row3 result line.",
+        "Need a public evidence chain showing the vendored legacy path matches the official historical integration rather than the newer context-engine path."
+      ],
+      "decision_basis": "A public immutable legacy memory-openviking snapshot is vendored, but the official result table has not yet been uniquely tied to this exact public snapshot. Upgrade to strict only after public equivalence evidence is added."
+    },
+    {
+      "group": "row4-compat-primary",
+      "target_claim_class": "compatibility",
+      "effective_claim_class": "compatibility",
+      "public_evidence_status": "compatibility_only",
+      "structural_gaps": [
+        "The current public openviking plugin is a context-engine plugin, while the historical official row4 implementation is not publicly proven to be this exact path.",
+        "The vendored current public context-engine snapshot declares minOpenvikingVersion 0.2.9, while the official README result table reports OpenViking 0.1.18."
+      ],
+      "decision_basis": "Current public coexistence path is memory-core + contextEngine=openviking, but the public context-engine snapshot is not proven identical to the historical official row4 implementation and its declared runtime floor (OpenViking >= 0.2.9) does not match the official 0.1.18 table row."
+    },
+    {
+      "group": "row4-exploratory-legacy-nonslot",
+      "target_claim_class": "exploratory",
+      "effective_claim_class": "exploratory",
+      "public_evidence_status": "insufficient_for_mainline",
+      "decision_basis": "Any manifest or code modification of legacy memory-openviking keeps the run permanently exploratory."
+    }
+  ]
+}

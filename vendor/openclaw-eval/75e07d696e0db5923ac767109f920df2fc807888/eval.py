@@ -1,0 +1,603 @@
+"""
+OpenClaw response evaluator.
+
+Two modes:
+  ingest  - Load conversations into openclaw (builds memory)
+  qa      - Run QA questions against openclaw and output response vs expected answer
+
+Usage:
+    # Ingest conversations
+    uv run python eval.py ingest locomo10.json --sample 0 --sessions 1-4
+
+    # Run QA evaluation (uses same user from ingest)
+    uv run python eval.py qa locomo10.json --sample 0 --output qa_results.txt
+
+    # Original txt mode (ingest only)
+    uv run python eval.py ingest example.txt --output output.txt
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+import time
+import random
+import string
+
+import requests
+
+
+# ---------------------------------------------------------------------------
+# Txt-based test file parsing (original format)
+# ---------------------------------------------------------------------------
+
+def parse_test_file(path: str) -> list[dict]:
+    """Parse txt test file into sessions.
+
+    Each session is a dict with:
+        - messages: list of user message strings
+        - evals: list of eval expectation strings
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    raw_sessions = content.split("---\n")
+    sessions = []
+
+    for raw in raw_sessions:
+        lines = [line for line in raw.strip().splitlines() if line.strip()]
+        if not lines:
+            continue
+
+        messages = []
+        evals = []
+        for line in lines:
+            if line.startswith("eval:"):
+                evals.append(line[len("eval:"):].strip())
+            else:
+                messages.append(line)
+
+        if messages or evals:
+            sessions.append({"messages": messages, "evals": evals})
+
+    return sessions
+
+
+# ---------------------------------------------------------------------------
+# LoCoMo JSON parsing
+# ---------------------------------------------------------------------------
+
+def format_locomo_message(msg: dict) -> str:
+    """Format a single LoCoMo message into a natural chat-style string.
+
+    Output format:
+        Speaker: text here
+        image_url: caption
+    """
+    speaker = msg.get("speaker", "unknown")
+    text = msg.get("text", "")
+    line = f"{speaker}: {text}"
+
+    img_urls = msg.get("img_url", [])
+    if isinstance(img_urls, str):
+        img_urls = [img_urls]
+    blip = msg.get("blip_caption", "")
+
+    if img_urls:
+        for url in img_urls:
+            caption = f": {blip}" if blip else ""
+            line += f"\n{url}{caption}"
+    elif blip:
+        line += f"\n({blip})"
+
+    return line
+
+
+def load_locomo_data(
+    path: str,
+    sample_index: int | None = None,
+) -> list[dict]:
+    """Load LoCoMo JSON and optionally filter to one sample."""
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    if sample_index is not None:
+        if sample_index < 0 or sample_index >= len(data):
+            print(f"Error: sample index {sample_index} out of range (0-{len(data)-1})", file=sys.stderr)
+            sys.exit(1)
+        return [data[sample_index]]
+    return data
+
+
+def build_session_messages(
+    item: dict,
+    session_range: tuple[int, int] | None = None,
+    tail: str = "[]",
+) -> list[dict]:
+    """Build bundled session messages for one LoCoMo sample.
+
+    Returns list of dicts with keys: message, meta.
+    """
+    conv = item["conversation"]
+    speakers = f"{conv['speaker_a']} & {conv['speaker_b']}"
+
+    session_keys = sorted(
+        [k for k in conv if k.startswith("session_") and not k.endswith("_date_time")],
+        key=lambda k: int(k.split("_")[1]),
+    )
+
+    sessions = []
+    for sk in session_keys:
+        sess_num = int(sk.split("_")[1])
+        if session_range:
+            lo, hi = session_range
+            if sess_num < lo or sess_num > hi:
+                continue
+
+        dt_key = f"{sk}_date_time"
+        date_time = conv.get(dt_key, "")
+
+        parts = [f"[group chat conversation: {date_time}]"]
+        for msg in conv[sk]:
+            parts.append(format_locomo_message(msg))
+        if tail:
+            parts.append(tail)
+        combined = "\n\n".join(parts)
+
+        sessions.append({
+            "message": combined,
+            "meta": {
+                "sample_id": item["sample_id"],
+                "session_key": sk,
+                "date_time": date_time,
+                "speakers": speakers,
+            },
+        })
+
+    return sessions
+
+
+# ---------------------------------------------------------------------------
+# API helpers
+# ---------------------------------------------------------------------------
+
+def extract_response_text(response_json: dict) -> str:
+    """Extract assistant text from the /v1/responses API response."""
+    try:
+        for item in response_json.get("output", []):
+            if item.get("type") == "message":
+                for content in item.get("content", []):
+                    if content.get("type") == "output_text":
+                        return content.get("text", "")
+        for item in response_json.get("output", []):
+            if "text" in item:
+                return item["text"]
+            for content in item.get("content", []):
+                if "text" in content:
+                    return content["text"]
+    except (KeyError, TypeError, IndexError):
+        pass
+    return f"[ERROR: could not extract text from response: {response_json}]"
+
+
+def get_session_id(user: str) -> str | None:
+    """Read the current session ID for the given user from sessions.json."""
+    sessions_file = os.path.expanduser("~/.openclaw/agents/main/sessions/sessions.json")
+    try:
+        with open(sessions_file, "r") as f:
+            data = json.load(f)
+        key = f"agent:main:openresponses-user:{user}"
+        return data.get(key, {}).get("sessionId")
+    except Exception as e:
+        print(f"    [reset] could not read session ID: {e}", file=sys.stderr)
+        return None
+
+
+def reset_session(session_id: str) -> None:
+    """Archive the session .jsonl file by renaming it with a timestamp suffix."""
+    sessions_dir = os.path.expanduser("~/.openclaw/agents/main/sessions")
+    src = os.path.join(sessions_dir, f"{session_id}.jsonl")
+    dst = f"{src}.{int(time.time())}"
+    try:
+        os.rename(src, dst)
+        print(f"    [reset] archived {session_id}.jsonl -> {os.path.basename(dst)}", file=sys.stderr)
+    except Exception as e:
+        print(f"    [reset] could not archive session file: {e}", file=sys.stderr)
+
+
+def viking_ingest(msg: str) -> None:
+    """Save a message to OpenViking via `ov add-memory`."""
+    import subprocess
+    result = subprocess.run(
+        ["ov", "add-memory", msg],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"ov exited with code {result.returncode}")
+
+
+def send_message_with_retry(
+    base_url: str, token: str, user: str, message: str, retries: int = 2
+) -> tuple[str, dict]:
+    """Call send_message with up to `retries` retries on failure."""
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            return send_message(base_url, token, user, message)
+        except Exception as e:
+            last_exc = e
+            if attempt < retries:
+                print(f"    [retry {attempt + 1}/{retries}] {e}", file=sys.stderr)
+    raise last_exc
+
+
+def send_message(
+    base_url: str, token: str, user: str, message: str
+) -> tuple[str, dict]:
+    """Send a single message to the OpenClaw responses API.
+
+    Returns (reply_text, usage) where usage has input_tokens, output_tokens, total_tokens.
+    """
+    url = f"{base_url}/v1/responses"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+    }
+    payload = {
+        "model": "openclaw",
+        "input": message,
+        "stream": False,
+    }
+    if user:
+        payload["user"] = user
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=300)
+    resp.raise_for_status()
+    body = resp.json()
+    usage = body.get("usage", {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
+    return extract_response_text(body), usage
+
+
+# ---------------------------------------------------------------------------
+# Ingest: load conversations into openclaw
+# ---------------------------------------------------------------------------
+
+def run_ingest(
+    args: argparse.Namespace,
+) -> None:
+    session_range = parse_session_range(args.sessions) if args.sessions else None
+
+    if args.input.endswith(".json"):
+        samples = load_locomo_data(args.input, args.sample)
+        results = []
+
+        for item in samples:
+            sample_id = item["sample_id"]
+            user_key = args.user or "eval-1"
+            sessions = build_session_messages(item, session_range, tail=args.tail)
+
+            print(f"\n=== Sample {sample_id} ===", file=sys.stderr)
+            print(f"    user: {user_key}", file=sys.stderr)
+            print(f"    {len(sessions)} session(s) to ingest", file=sys.stderr)
+
+            session_id = None
+            for sess in sessions:
+                meta = sess["meta"]
+                msg = sess["message"]
+                label = f"{meta['session_key']} ({meta['date_time']})"
+
+                preview = msg.replace("\n", " | ")[:80]
+                print(f"  [{label}] {preview}...", file=sys.stderr)
+
+                if args.viking:
+                    try:
+                        viking_ingest(msg)
+                        print(f"    -> [viking] saved", file=sys.stderr)
+                        results.append({
+                            "sample_id": sample_id,
+                            "session": meta["session_key"],
+                            "user": user_key,
+                            "reply": "[viking] saved",
+                            "usage": {},
+                        })
+                    except Exception as e:
+                        print(f"    -> [ERROR] {e}", file=sys.stderr)
+                        results.append({
+                            "sample_id": sample_id,
+                            "session": meta["session_key"],
+                            "user": user_key,
+                            "reply": f"[ERROR] {e}",
+                            "usage": {},
+                        })
+                else:
+                    try:
+                        reply, usage = send_message(args.base_url, args.token, user_key, msg)
+                        print(f"    -> {reply[:80]}{'...' if len(reply) > 80 else ''}", file=sys.stderr)
+                        results.append({
+                            "sample_id": sample_id,
+                            "session": meta["session_key"],
+                            "user": user_key,
+                            "reply": reply,
+                            "usage": usage,
+                        })
+                    except Exception as e:
+                        print(f"    -> [ERROR] {e}", file=sys.stderr)
+                        results.append({
+                            "sample_id": sample_id,
+                            "session": meta["session_key"],
+                            "user": user_key,
+                            "reply": f"[ERROR] {e}",
+                            "usage": {},
+                        })
+
+                    if session_id is None:
+                        session_id = get_session_id(user_key)
+                    if session_id:
+                        reset_session(session_id)
+
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                for r in results:
+                    f.write(f"[{r['sample_id']}/{r['session']}] user={r['user']}\n")
+                    f.write(f"  {r['reply']}\n\n")
+            print(f"Results written to {args.output}", file=sys.stderr)
+
+            json_path = args.output + ".json"
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(results, f, indent=2, ensure_ascii=False)
+            print(f"Results (JSON) written to {json_path}", file=sys.stderr)
+
+    else:
+        # Original txt mode
+        sessions = parse_test_file(args.input)
+        print(f"Running {len(sessions)} session(s)", file=sys.stderr)
+
+        results = []
+        for idx, session in enumerate(sessions, start=1):
+            session_key = args.user or "eval-1"
+            print(f"--- Session {idx} (user={session_key}) ---", file=sys.stderr)
+
+            session_id = None
+            turns = []
+            for msg in session["messages"]:
+                print(f"  [user] {msg}", file=sys.stderr)
+                try:
+                    reply, _usage = send_message(args.base_url, args.token, session_key, msg)
+                    print(f"  [assistant] {reply[:80]}{'...' if len(reply) > 80 else ''}", file=sys.stderr)
+                    turns.append(("user", msg))
+                    turns.append(("assistant", reply))
+                except Exception as e:
+                    print(f"  [ERROR] {e}", file=sys.stderr)
+                    turns.append(("user", msg))
+                    turns.append(("error", str(e)))
+                    break
+
+            if session_id is None:
+                session_id = get_session_id(session_key)
+            if session_id:
+                reset_session(session_id)
+
+            results.append({"index": idx, "turns": turns, "evals": session["evals"]})
+
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                for r in results:
+                    f.write(f"=== Session {r['index']} ===\n")
+                    for role, text in r["turns"]:
+                        f.write(f"[{role}] {text}\n")
+                    for ev in r["evals"]:
+                        f.write(f"[eval] {ev}\n")
+                    f.write("\n")
+            print(f"\nResults written to {args.output}", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# QA: run QA questions and compare with expected answers
+# ---------------------------------------------------------------------------
+
+async def run_sample_qa(
+    item: dict,
+    sample_idx: int,
+    args: argparse.Namespace,
+    semaphore: asyncio.Semaphore,
+) -> tuple[list[dict], dict]:
+    """Process QA for a single sample. Returns (records, sample_usage)."""
+    sample_id = item["sample_id"]
+    user_key = args.user or f"eval-{sample_idx}"
+    qas = [q for q in item.get("qa", []) if str(q.get("category", "")) != "5"]
+    if args.count is not None:
+        qas = qas[:args.count]
+
+    jsonl_path = f"{args.output}.{sample_idx}.jsonl" if args.output else None
+
+    sample_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    records = []
+    session_id = None
+
+    async with semaphore:
+        print(f"\n=== Sample {sample_id} [{sample_idx}] (user={user_key}) ===", file=sys.stderr)
+        print(f"    Running {len(qas)} QA question(s)...", file=sys.stderr)
+
+        jsonl_file = open(jsonl_path, "w", encoding="utf-8") if jsonl_path else None
+        try:
+            for qi, qa in enumerate(qas, start=1):
+                question = qa["question"]
+                expected = str(qa["answer"])
+                category = qa.get("category", "")
+                evidence = qa.get("evidence", [])
+
+                print(f"  [{sample_idx}] Q{qi}/{len(qas)}: {question[:60]}{'...' if len(question) > 60 else ''}", file=sys.stderr)
+
+                try:
+                    response, usage = await asyncio.to_thread(
+                        send_message_with_retry,
+                        args.base_url, args.token, user_key, question,
+                    )
+                    print(f"  [{sample_idx}]   A: {response[:60]}{'...' if len(response) > 60 else ''}", file=sys.stderr)
+                    print(f"  [{sample_idx}]   tokens: in={usage.get('input_tokens',0)} out={usage.get('output_tokens',0)} total={usage.get('total_tokens',0)}", file=sys.stderr)
+                    for k in sample_usage:
+                        sample_usage[k] += usage.get(k, 0)
+                except Exception as e:
+                    response = f"[ERROR] {e}"
+                    usage = {}
+                    print(f"  [{sample_idx}]   A: {response}", file=sys.stderr)
+
+                if session_id is None:
+                    session_id = get_session_id(user_key)
+                if session_id:
+                    reset_session(session_id)
+
+                record = {
+                    "sample_id": sample_id,
+                    "sample_idx": sample_idx,
+                    "qi": qi,
+                    "question": question,
+                    "expected": expected,
+                    "response": response,
+                    "category": category,
+                    "evidence": evidence,
+                    "usage": usage,
+                }
+                records.append(record)
+
+                if jsonl_file:
+                    jsonl_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+                    jsonl_file.flush()
+
+        finally:
+            if jsonl_file:
+                jsonl_file.close()
+                print(f"    [{sample_idx}] written to {jsonl_path}", file=sys.stderr)
+
+    return records, sample_usage
+
+
+def run_qa(
+    args: argparse.Namespace,
+) -> None:
+    """QA only: send questions and get responses. No ingestion."""
+    if not args.input.endswith(".json"):
+        print("Error: QA mode only works with LoCoMo JSON files", file=sys.stderr)
+        sys.exit(1)
+
+    samples = load_locomo_data(args.input, args.sample)
+    parallel = min(args.parallel, 10)
+    print(f"    user: {args.user or 'eval-{sample_idx}'}", file=sys.stderr)
+    print(f"    parallel: {parallel}", file=sys.stderr)
+
+    async def _run():
+        semaphore = asyncio.Semaphore(parallel)
+        tasks = [
+            run_sample_qa(item, idx + 1, args, semaphore)
+            for idx, item in enumerate(samples)
+        ]
+        return await asyncio.gather(*tasks)
+
+    results_list = asyncio.run(_run())
+
+    total_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    for _, sample_usage in results_list:
+        for k in total_usage:
+            total_usage[k] += sample_usage[k]
+
+    print(f"\n    total tokens: in={total_usage['input_tokens']} out={total_usage['output_tokens']} total={total_usage['total_tokens']}", file=sys.stderr)
+
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write("=== TOTAL USAGE ===\n")
+            f.write(f"input_tokens: {total_usage['input_tokens']}\n")
+            f.write(f"output_tokens: {total_usage['output_tokens']}\n")
+            f.write(f"total_tokens: {total_usage['total_tokens']}\n")
+        print(f"Summary written to {args.output}", file=sys.stderr)
+    else:
+        print("\nDone (no output file requested).", file=sys.stderr)
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def parse_session_range(s: str) -> tuple[int, int]:
+    """Parse '1-4' or '3' into (lo, hi) inclusive tuple."""
+    if "-" in s:
+        lo, hi = s.split("-", 1)
+        return int(lo), int(hi)
+    n = int(s)
+    return n, n
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate OpenClaw responses")
+    parser.add_argument("mode", choices=["ingest", "qa"], help="Mode: ingest (load conversations) or qa (run QA eval)")
+    parser.add_argument("input", help="Path to test file (.txt or .json)")
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Path to output file (omit to skip writing)",
+    )
+    parser.add_argument(
+        "--base-url",
+        default="http://127.0.0.1:18789",
+        help="OpenClaw gateway base URL (default: http://127.0.0.1:18789)",
+    )
+    parser.add_argument(
+        "--token",
+        default=os.environ.get("OPENCLAW_GATEWAY_TOKEN", "xxx"),
+        help="Auth token (or set OPENCLAW_GATEWAY_TOKEN env var)",
+    )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        help="LoCoMo: sample index (0-based). Default: all samples.",
+    )
+    parser.add_argument(
+        "--sessions",
+        default=None,
+        help="LoCoMo: session range, e.g. '1-4' or '3'. Default: all sessions.",
+    )
+    parser.add_argument(
+        "--tail",
+        default="[]",
+        help="Tail message appended after conversation messages per session (default: '[]')",
+    )
+    parser.add_argument(
+        "--count",
+        type=int,
+        default=None,
+        help="QA mode: number of QA questions to run. Default: all.",
+    )
+    parser.add_argument(
+        "--user",
+        default=None,
+        help="QA mode: user UUID from a prior ingest run to target.",
+    )
+    parser.add_argument(
+        "-p", "--parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="QA mode: number of samples to process concurrently (max 10, default 1).",
+    )
+    parser.add_argument(
+        "--viking",
+        action="store_true",
+        default=False,
+        help="Ingest mode: save to OpenViking via `ov add-memory` instead of OpenClaw.",
+    )
+    args = parser.parse_args()
+
+    if not args.token and not getattr(args, "viking", False):
+        print("Error: --token or OPENCLAW_GATEWAY_TOKEN env var is required", file=sys.stderr)
+        sys.exit(1)
+
+    if args.mode == "ingest":
+        run_ingest(args)
+    elif args.mode == "qa":
+        run_qa(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,109 +1,63 @@
-.PHONY: bootstrap fetch-upstreams setup-envs versions preflight status diagnose-openclaw phase-a phase-b phase-c row4-probe bundle 	smoke-row1 install-ov-helper configure-ov-local smoke-row3 	patch-row2 configure-row2 smoke-row2 	full-row1 full-row2 full-row3 	merge-row1 merge-row2 merge-row3 	judge-row1 judge-row2 judge-row3 	finalize-row1 finalize-row2 finalize-row3 	verify-row1 verify-row2 verify-row3 summary check-dataset
+GROUP ?= row1-memory-core
+RUN_ID ?= manual-run
+STAGE ?= micro
+MODE ?= full
 
-bootstrap:
-	./scripts/bootstrap_once.sh
+.PHONY: benchmark source-manifest freeze-versions preflight preflight-group materialize probe micro extended full judge finalize verify summary claim-readiness repeatability audit-sample audit-summary tail-appendix
 
-fetch-upstreams:
-	./scripts/fetch_upstreams.sh
+benchmark:
+	python3 scripts/build_benchmark.py
 
-setup-envs:
-	./scripts/setup_envs.sh
+source-manifest:
+	python3 scripts/generate_source_manifest.py
 
-versions:
-	./scripts/record_versions.sh
+freeze-versions:
+	python3 scripts/freeze_versions.py
 
 preflight:
-	./scripts/preflight.sh
+	python3 scripts/preflight.py
 
-diagnose-openclaw:
-	./scripts/diagnose_openclaw.sh
+preflight-group:
+	python3 scripts/preflight.py --group $(GROUP)
 
-status:
-	python3 scripts/status_matrix.py
+materialize:
+	python3 scripts/materialize_configs.py $(GROUP) $(RUN_ID)
 
-phase-a:
-	./scripts/phase_a_smoke.sh
+probe:
+	./scripts/run_probe.sh $(GROUP) $(RUN_ID)
 
-phase-b:
-	./scripts/phase_b_full_core_and_ov.sh
+micro:
+	./scripts/run_smoke.sh $(GROUP) $(RUN_ID) micro
 
-phase-c:
-	./scripts/phase_c_row2.sh
+extended:
+	./scripts/run_smoke.sh $(GROUP) $(RUN_ID) extended
 
-row4-probe:
-	./scripts/row4_probe.sh
+full:
+	./scripts/run_full_group.sh $(GROUP) $(RUN_ID)
 
-bundle:
-	./scripts/collect_debug_bundle.sh
+judge:
+	./scripts/run_judge.sh $(GROUP) $(RUN_ID) $(MODE) $(if $(filter smoke,$(MODE)),$(STAGE),)
 
-check-dataset:
-	python3 scripts/check_dataset.py
+finalize:
+	python3 scripts/finalize_group.py $(GROUP) $(RUN_ID) --mode $(MODE) $(if $(filter smoke,$(MODE)),--stage $(STAGE),)
 
-smoke-row1:
-	./scripts/smoke_row1_memory_core.sh
-
-install-ov-helper:
-	./scripts/install_openviking_helper.sh
-
-configure-ov-local:
-	./scripts/configure_openviking_local.sh
-
-smoke-row3:
-	./scripts/smoke_row3_openviking_minus_core.sh
-
-patch-row2:
-	./scripts/patch_memory_lancedb_global.sh
-
-configure-row2:
-	./scripts/configure_memory_lancedb.sh
-
-smoke-row2:
-	./scripts/smoke_row2_lancedb.sh
-
-full-row1:
-	./scripts/run_full_group.sh row1-memory-core
-
-full-row2:
-	./scripts/run_full_group.sh row2-memory-lancedb
-
-full-row3:
-	./scripts/run_full_group.sh row3-openviking-minus-core
-
-merge-row1:
-	python3 scripts/merge_answers.py row1-memory-core --expected 1540
-
-merge-row2:
-	python3 scripts/merge_answers.py row2-memory-lancedb --expected 1540
-
-merge-row3:
-	python3 scripts/merge_answers.py row3-openviking-minus-core --expected 1540
-
-judge-row1:
-	./scripts/judge_group.sh row1-memory-core
-
-judge-row2:
-	./scripts/judge_group.sh row2-memory-lancedb
-
-judge-row3:
-	./scripts/judge_group.sh row3-openviking-minus-core
-
-finalize-row1:
-	./scripts/finalize_group.sh row1-memory-core
-
-finalize-row2:
-	./scripts/finalize_group.sh row2-memory-lancedb
-
-finalize-row3:
-	./scripts/finalize_group.sh row3-openviking-minus-core
-
-verify-row1:
-	python3 scripts/verify_group_outputs.py row1-memory-core
-
-verify-row2:
-	python3 scripts/verify_group_outputs.py row2-memory-lancedb
-
-verify-row3:
-	python3 scripts/verify_group_outputs.py row3-openviking-minus-core
+verify:
+	python3 scripts/verify_group_outputs.py $(GROUP) $(RUN_ID) --mode $(MODE) $(if $(filter smoke,$(MODE)),--stage $(STAGE),)
 
 summary:
-	python3 scripts/build_results_table.py
+	python3 scripts/build_results_summary.py
+
+claim-readiness:
+	python3 scripts/build_claim_readiness.py
+
+repeatability:
+	python3 scripts/build_repeatability_report.py
+
+audit-sample:
+	python3 scripts/generate_manual_audit_sample.py $(GROUP) --run-id $(RUN_ID)
+
+audit-summary:
+	python3 scripts/summarize_manual_audit.py
+
+tail-appendix:
+	python3 scripts/run_tail_sensitivity_appendix.py $(GROUP) $(RUN_ID)

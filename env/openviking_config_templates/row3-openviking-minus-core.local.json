@@ -1,0 +1,45 @@
+{
+  "__repro_meta__": {
+    "group": "row3-openviking-minus-core",
+    "runtime_family": "legacy-0.1.x-local-mode",
+    "api_key_sources": {
+      "vlm": "env:OPENVIKING_VLM_API_KEY",
+      "embedding": "env:OPENVIKING_EMBEDDING_API_KEY"
+    },
+    "notes": [
+      "Template mirrors the vendored legacy README local-mode ov.conf shape for the 0.1.x line.",
+      "Secrets stay as placeholders in the template; use scripts/materialize_configs.py to render runnable local files."
+    ]
+  },
+  "root_api_key": null,
+  "server": {
+    "host": "${OPENVIKING_SERVER_HOST}",
+    "port": "${OPENVIKING_SERVER_PORT}"
+  },
+  "storage": {
+    "workspace": "storage/{run_id}/{group}/openviking-workspace",
+    "vectordb": {
+      "backend": "local"
+    },
+    "agfs": {
+      "backend": "local",
+      "port": 1833
+    }
+  },
+  "embedding": {
+    "dense": {
+      "provider": "${OPENVIKING_EMBEDDING_PROVIDER}",
+      "api_key": "${OPENVIKING_EMBEDDING_API_KEY}",
+      "model": "${OPENVIKING_EMBEDDING_MODEL}",
+      "api_base": "${OPENVIKING_EMBEDDING_API_BASE}",
+      "dimension": "${OPENVIKING_EMBEDDING_DIMENSION}",
+      "input": "multimodal"
+    }
+  },
+  "vlm": {
+    "provider": "${OPENVIKING_VLM_PROVIDER}",
+    "api_key": "${OPENVIKING_VLM_API_KEY}",
+    "model": "${OPENVIKING_VLM_MODEL}",
+    "api_base": "${OPENVIKING_VLM_API_BASE}"
+  }
+}

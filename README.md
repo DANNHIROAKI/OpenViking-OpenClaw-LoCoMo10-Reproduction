@@ -1,181 +1,99 @@
-# OpenViking-OpenClaw-LoCoMo10-Reproduction
+# OpenViking × OpenClaw × LoCoMo10 复现仓库
 
-这个仓库用于复现 OpenViking 官方 README_CN 中的 LoCoMo10 / OpenClaw 对比实验。
+本仓库对应 `repro_spec_v2.md`。仓库只保留正式复现所需的源码快照、基准数据、配置模板、执行脚本与报告模板。
 
-## 目标实验
+## 范围
 
-官方给出的目标结果如下：
+- strict 主线：`row1-memory-core`、`row2-memory-lancedb`、`row3-openviking-minus-core`
+- compatibility：`row4-compat-primary`
+- exploratory：`row4-exploratory-legacy-nonslot`（仅附录，不进主结果表）
 
-| 组别 | 官方任务完成率 | 官方输入 token 总计 |
-|---|---:|---:|
-| OpenClaw(memory-core) | 35.65% | 24,611,530 |
-| OpenClaw + LanceDB (-memory-core) | 44.55% | 51,574,530 |
-| OpenClaw + OpenViking Plugin (-memory-core) | 52.08% | 4,264,396 |
-| OpenClaw + OpenViking Plugin (+memory-core) | 51.23% | 2,099,622 |
-
-## 这份仓库现在能做什么
-
-这份仓库已经从“只准备数据”扩成了一套分阶段复现框架：
-
-- 自带过滤后的 LoCoMo10 数据（1540 QA case）
-- 固定 `openclaw-eval` 上游 commit
-- 创建两套隔离环境：`openclaw-eval` / `OpenViking 0.1.18`
-- 跑 3 组主线实验：
-  - `row1-memory-core`
-  - `row2-memory-lancedb`
-  - `row3-openviking-minus-core`
-- 合并答案、汇总输入 token、运行 judge、生成对比表
-- 把 `row4-openviking-plus-core` 单独保留为调查项，不混入主线自动化
-
-## 目录结构
+## 目录
 
 ```text
-.
-├── .env.example
-├── .gitignore
-├── Makefile
-├── README.md
-├── official_targets.json
-├── artifacts/
-├── data/
-│   └── openviking-locomo10-1540/
-├── dataset.sh
-├── docs/
-│   ├── CHECKLIST.zh-CN.md
-│   ├── COMMANDS.zh-CN.md
-│   ├── NEXT_STEPS.zh-CN.md
-│   ├── PLAN.zh-CN.md
-│   ├── ROW4_NOTES.zh-CN.md
-│   ├── TROUBLESHOOTING.zh-CN.md
-│   └── UPSTREAM_CONSTRAINTS.zh-CN.md
-├── logs/
-├── runs/
-│   ├── full/
-│   └── smoke/
-├── scripts/
-└── third_party/
+benchmark/   固定后的 LoCoMo10 数据包与 manifest
+env/         组定义、source freeze、versions freeze、配置模板
+reports/     报告模板与后续生成结果
+runs/        smoke / full 运行输出
+scripts/     执行与校验脚本
+storage/     运行期隔离存储
+vendor/      vendored 上游源码快照
 ```
 
-## 你现在该先做什么
-
-先只做 row1 / row3 的 smoke，不要直接跑全量。
-
-### 最短执行路径
+## 首次使用
 
 ```bash
 cp .env.example .env
-./scripts/bootstrap_once.sh
-openclaw onboard
-./scripts/record_versions.sh
-./scripts/preflight.sh
-./scripts/phase_a_smoke.sh
-python3 scripts/status_matrix.py
+python3 scripts/build_benchmark.py
+python3 scripts/generate_source_manifest.py
+python3 scripts/freeze_versions.py
+python3 scripts/preflight.py
+python3 scripts/preflight.py --group row1-memory-core
 ```
 
-如果 `phase_a_smoke.sh` 提示你要先执行 `ov-install`，按提示跑完以后，再重新执行一次它。
+说明：`env/versions_manifest.json` 随仓库提供的是模板，占位值不会用于正式实验。开始正式运行前，必须在目标实验机上重新执行 `python3 scripts/freeze_versions.py`。
 
-## 推荐执行顺序
+## 建议执行顺序
 
-### 阶段 A：row1 / row3 冒烟
+按 `repro_spec_v2.md` 第 13 节：
 
-```bash
-./scripts/phase_a_smoke.sh
-```
+1. row1 probe → micro smoke → extended smoke → full #1 → full #2
+2. row3 probe → micro smoke → extended smoke → full #1 → full #2
+3. row2 probe → micro smoke → extended smoke → full #1 → full #2（建议）
+4. row4-compat-primary probe → micro smoke → extended smoke → full #1
 
-### 阶段 B：row1 / row3 全量 + 合并 + judge + summary
-
-```bash
-./scripts/phase_b_full_core_and_ov.sh
-```
-
-### 阶段 C：row2（LanceDB）
+## 常用命令
 
 ```bash
-./scripts/phase_c_row2.sh
-```
-
-### 阶段 D：row4 调查
-
-```bash
-./scripts/row4_probe.sh
-```
-
-## 随时查看“下一步该跑什么”
-
-```bash
-python3 scripts/status_matrix.py
-```
-
-## 文档导航
-
-- 方案总览：`docs/PLAN.zh-CN.md`
-- 现在就照着跑：`docs/NEXT_STEPS.zh-CN.md`
-- 一屏内可复制命令：`docs/COMMANDS.zh-CN.md`
-- 执行清单：`docs/CHECKLIST.zh-CN.md`
-- 上游约束说明：`docs/UPSTREAM_CONSTRAINTS.zh-CN.md`
-- row4 为什么不放主线：`docs/ROW4_NOTES.zh-CN.md`
-- 常见报错和排查：`docs/TROUBLESHOOTING.zh-CN.md`
-
-## 关键脚本
-
-### 初始化 / 校验
-
-- `scripts/bootstrap_once.sh`
-- `scripts/fetch_upstreams.sh`
-- `scripts/setup_envs.sh`
-- `scripts/record_versions.sh`
-- `scripts/preflight.sh`
-- `scripts/check_dataset.py`
-- `scripts/status_matrix.py`
-
-### 组别配置
-
-- `scripts/configure_memory_core.sh`
-- `scripts/configure_memory_lancedb.sh`
-- `scripts/patch_memory_lancedb_global.sh`
-- `scripts/install_openviking_helper.sh`
-- `scripts/configure_openviking_local.sh`
-
-### 运行实验
-
-- `scripts/smoke_row1_memory_core.sh`
-- `scripts/smoke_row2_lancedb.sh`
-- `scripts/smoke_row3_openviking_minus_core.sh`
-- `scripts/run_full_group.sh`
-- `scripts/finalize_group.sh`
-- `scripts/phase_a_smoke.sh`
-- `scripts/phase_b_full_core_and_ov.sh`
-- `scripts/phase_c_row2.sh`
-- `scripts/row4_probe.sh`
-
-### 汇总与核对
-
-- `scripts/merge_answers.py`
-- `scripts/sum_input_tokens.py`
-- `scripts/judge_group.sh`
-- `scripts/verify_group_outputs.py`
-- `scripts/build_results_table.py`
-- `scripts/collect_debug_bundle.sh`
-
-## Makefile 快捷命令
-
-```bash
-make bootstrap
-make fetch-upstreams
-make setup-envs
-make versions
+make benchmark
+make source-manifest
+make freeze-versions
 make preflight
-make status
-make phase-a
-make phase-b
-make phase-c
-make row4-probe
+make preflight-group GROUP=row3-openviking-minus-core
+make materialize GROUP=row3-openviking-minus-core RUN_ID=row3-probe-001
+make probe GROUP=row1-memory-core RUN_ID=row1-probe-001
+make micro GROUP=row1-memory-core RUN_ID=row1-smoke-001
+make extended GROUP=row1-memory-core RUN_ID=row1-smoke-002
+make full GROUP=row1-memory-core RUN_ID=row1-full-001
+make judge GROUP=row1-memory-core RUN_ID=row1-full-001 MODE=full
 make summary
 ```
 
-## 重要注意事项
+也可直接调用：
 
-1. `ingest` 和 `qa` 必须显式传同一个 `--user`。本仓库的运行脚本已经固定这么做。
-2. row3 走的是旧版 `memory-openviking` 路径，不是新版 `openviking` context-engine 插件。
-3. row2 不建议先于 row1 / row3，因为 `memory-lancedb` 近期更容易卡在依赖和插件加载。
-4. row4 目前不做“一键自动化”，原因见 `docs/ROW4_NOTES.zh-CN.md`。
+```bash
+./scripts/run_probe.sh <group> <run_id>
+./scripts/run_smoke.sh <group> <run_id> micro
+./scripts/run_smoke.sh <group> <run_id> extended
+./scripts/run_full_group.sh <group> <run_id>
+./scripts/run_judge.sh <group> <run_id> full
+```
+
+## 主线硬约束
+
+- 正式结果只允许通过 OpenClaw gateway
+- 正式组禁止 `eval.py --viking`
+- ingest 与 QA 必须显式传同一个 user id
+- `parallel` 固定为 `1`
+- ingest `tail` 固定为 `[remember what's said, keep existing memory]`
+- 不复用旧 storage、workspace、session、cache
+- 不在 full run 中途改版本、模型路由或配置
+
+## 结果文件
+
+- 运行输出：`runs/full/<run_id>/<group>/`、`runs/smoke/<run_id>/<group>/<stage>/`
+- 运行期存储：`storage/<run_id>/<group>/`
+- 配置快照：`env/openclaw_config_snapshots/`、`env/openviking_config_snapshots/`
+- 主表：`reports/results_summary.{md,csv}`
+- 偏差说明：`reports/deviation_report.md`
+- 人工审计：`reports/manual_audit.md`
+- row4 结构说明：`reports/row4_structural_note.md`
+
+## 可选分析
+
+下面两个脚本不属于最小交付物，但保留用于辅助检查计划第 1 节与第 11 节：
+
+```bash
+python3 scripts/build_claim_readiness.py
+python3 scripts/build_repeatability_report.py
+```

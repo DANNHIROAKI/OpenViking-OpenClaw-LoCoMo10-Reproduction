@@ -1,0 +1,40 @@
+{
+  "__repro_meta__": {
+    "group": "row4-compat-primary",
+    "runtime_family": "current-public-context-engine-local-mode",
+    "api_key_sources": {
+      "vlm": "env:OPENVIKING_VLM_API_KEY",
+      "embedding": "env:OPENVIKING_EMBEDDING_API_KEY"
+    },
+    "notes": [
+      "Template mirrors the current public OpenViking server config examples used by the context-engine plugin line.",
+      "This template is for compatibility runs only; the official README table still reports OpenViking 0.1.18."
+    ]
+  },
+  "storage": {
+    "workspace": "storage/{run_id}/{group}/openviking-workspace"
+  },
+  "log": {
+    "level": "${OPENVIKING_LOG_LEVEL}",
+    "output": "${OPENVIKING_LOG_OUTPUT}"
+  },
+  "server": {
+    "host": "${OPENVIKING_SERVER_HOST}",
+    "port": "${OPENVIKING_SERVER_PORT}"
+  },
+  "embedding": {
+    "dense": {
+      "provider": "${OPENVIKING_EMBEDDING_PROVIDER}",
+      "api_base": "${OPENVIKING_EMBEDDING_API_BASE}",
+      "api_key": "${OPENVIKING_EMBEDDING_API_KEY}",
+      "model": "${OPENVIKING_EMBEDDING_MODEL}",
+      "dimension": "${OPENVIKING_EMBEDDING_DIMENSION}"
+    }
+  },
+  "vlm": {
+    "provider": "${OPENVIKING_VLM_PROVIDER}",
+    "api_base": "${OPENVIKING_VLM_API_BASE}",
+    "api_key": "${OPENVIKING_VLM_API_KEY}",
+    "model": "${OPENVIKING_VLM_MODEL}"
+  }
+}

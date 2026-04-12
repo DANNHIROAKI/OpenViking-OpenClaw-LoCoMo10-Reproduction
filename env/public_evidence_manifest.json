@@ -1,0 +1,51 @@
+{
+  "last_updated": "2026-04-12T00:00:00Z",
+  "official_table": {
+    "repo": "https://github.com/volcengine/OpenViking",
+    "page": "README_CN.md",
+    "facts": {
+      "dataset": "LoCoMo10 with category 5 removed -> 1540 QA cases",
+      "openviking_version": "0.1.18",
+      "task_model": "seed-2.0-code",
+      "eval_repo": "https://github.com/ZaynJarvis/openclaw-eval/tree/main"
+    }
+  },
+  "architecture_evidence": {
+    "current_public_openclaw_plugin_docs": {
+      "path": "OpenViking/examples/openclaw-plugin/INSTALL-ZH.md",
+      "claims": [
+        "Current openviking plugin config is under plugins.entries.openviking.config.",
+        "Current openviking plugin occupies the contextEngine slot.",
+        "Current openviking plugin is incompatible with the old memory-openviking plugin and cannot be mixed."
+      ]
+    },
+    "vendored_legacy_snapshot": {
+      "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9",
+      "plugin_id": "memory-openviking",
+      "kind": "memory",
+      "used_by_groups": [
+        "row3-openviking-minus-core",
+        "row4-exploratory-legacy-nonslot"
+      ]
+    },
+    "vendored_current_context_engine_snapshot": {
+      "path": "vendor/openviking-context-engine/v0.3.5",
+      "plugin_id": "openviking",
+      "kind": "context-engine",
+      "compatibility_note": "install-manifest.json declares minOpenvikingVersion 0.2.9 and minOpenclawVersion 2026.3.7"
+    }
+  },
+  "row3": {
+    "target_claim_class": "strict",
+    "effective_claim_class": "compatibility",
+    "strict_gap": "A public immutable legacy snapshot is vendored, but there is not yet a public source that uniquely ties the official README row3 result to this exact snapshot."
+  },
+  "row4": {
+    "target_claim_class": "compatibility",
+    "effective_claim_class": "compatibility",
+    "structural_gap": [
+      "The current public openviking coexistence path is memory-core + contextEngine=openviking, not the legacy memory-slot path.",
+      "The current public context-engine snapshot declares minOpenvikingVersion 0.2.9, while the official README result table reports OpenViking 0.1.18."
+    ]
+  }
+}

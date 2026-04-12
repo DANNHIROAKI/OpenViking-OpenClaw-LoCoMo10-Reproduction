@@ -1,0 +1,176 @@
+{
+  "generated_at": "2026-04-12T13:47:26Z",
+  "snapshots": [
+    {
+      "snapshot_id": "75e07d696e0db5923ac767109f920df2fc807888",
+      "upstream_repo": "https://github.com/ZaynJarvis/openclaw-eval",
+      "ref": "75e07d696e0db5923ac767109f920df2fc807888",
+      "fetched_at": "2026-04-12T13:47:26Z",
+      "scope_note": "vendored evaluation-critical files: README.md, eval.py, judge.py, judge_util.py, locomo10.json",
+      "used_by_groups": [
+        "row1-memory-core",
+        "row2-memory-lancedb",
+        "row3-openviking-minus-core",
+        "row4-compat-primary"
+      ],
+      "allow_modifications": false,
+      "files": [
+        {
+          "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/README.md",
+          "sha256": "0dabeeb83012287993c69a8c666be64827ddeea7b2c9b6ccd11f0e1b9ed3ab2e"
+        },
+        {
+          "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/eval.py",
+          "sha256": "67c8eac62eb091e364d9c5dd60f33c7ce87d8ad6dbe6580923965d0f3a3f2c55"
+        },
+        {
+          "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/judge.py",
+          "sha256": "26f9a2d4b3007691244a9ea01e15cffc48f74cc841a99632ca2f9607b03835c1"
+        },
+        {
+          "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/judge_util.py",
+          "sha256": "537fd74849b322fb1a56d4c9a2bd95fff1ffd0df07c9dfa2ac639e32bcbcbf35"
+        },
+        {
+          "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/locomo10.json",
+          "sha256": "bee5d85e9ee5dcbec79906fabbda6da64aac01ac3d30ad7bad55ae90d28c3c6a"
+        }
+      ]
+    },
+    {
+      "snapshot_id": "6c60a1d2fb2debd5ac990831350e995473feb6e9",
+      "upstream_repo": "https://github.com/volcengine/OpenViking",
+      "ref": "6c60a1d2fb2debd5ac990831350e995473feb6e9",
+      "fetched_at": "2026-04-12T13:47:26Z",
+      "scope_note": "vendored execution-critical subtree under examples/openclaw-memory-plugin; helper/tests omitted",
+      "used_by_groups": [
+        "row3-openviking-minus-core",
+        "row4-exploratory-legacy-nonslot"
+      ],
+      "allow_modifications": false,
+      "files": [
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/README.md",
+          "sha256": "227c97370b2b8960d636c1f50d4250cfc5de4ee691cf81d476c9f29b593d73fd"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/client.ts",
+          "sha256": "2f9f86b55cb98d8647c30ac231bc448abc2da9c2bfb90abba0ad6eb2122654ad"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/config.ts",
+          "sha256": "bb8a3decf0eba25c1c5eb71666ca95007bff03f680bb2bb053e489a769852ccb"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/index.ts",
+          "sha256": "b67133fa41af08849e2237cddd53321e0191f4762e8f25a8d0e9e74a3ee5ddf8"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/memory-ranking.ts",
+          "sha256": "e115261dd74ddb3082c1a3b7dceb070c6a94a06a98dbc963a061e4f3ca68a802"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/openclaw.plugin.json",
+          "sha256": "9226b9a10c6b4f8d8d0cca92abc0c665e0a33fbd631dafc5d8b90c185471424a"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/package-lock.json",
+          "sha256": "2111daad4e64d1850f31ea5d80afd0fa957a16e789c586a8e34bae517326b63f"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/package.json",
+          "sha256": "bd731a9f1bc2138b14ba20e1e4a8385ccde96f407bf79506467c42e73e2130ab"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/process-manager.ts",
+          "sha256": "1b3f1f0dda20e654638acf3ed4f48f561bc0c07dd99a444929fef2339bd14dee"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/text-utils.ts",
+          "sha256": "eeeed3b56dca940bc4e1288d9336b86032ae93ee1fd44430ea7d62205cb2f26c"
+        },
+        {
+          "path": "vendor/openviking-legacy-plugin/6c60a1d2fb2debd5ac990831350e995473feb6e9/tsconfig.json",
+          "sha256": "ecb4486ecb1b636b1bc9c192ffefad2bd3a7750a7138ff324321c7b80323bd00"
+        }
+      ]
+    },
+    {
+      "snapshot_id": "v0.3.5",
+      "upstream_repo": "https://github.com/volcengine/OpenViking",
+      "ref": "v0.3.5",
+      "fetched_at": "2026-04-12T13:47:26Z",
+      "scope_note": "vendored execution-critical subtree under examples/openclaw-plugin; tests/images/setup-helper omitted",
+      "used_by_groups": [
+        "row4-compat-primary"
+      ],
+      "allow_modifications": false,
+      "files": [
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/README.md",
+          "sha256": "79f3e37db649137fa599483bc2069a0e997dd2d95947e437d5530c289331c268"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/README_CN.md",
+          "sha256": "4cac69d1378ca08b55490007ba33104bcc9a72e9d2056b2f2bf219b2ca239485"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/client.ts",
+          "sha256": "cd59d9490095ac0c8b2951ebeb94f44bb79349bde1db5587a4c2625835307d10"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/config.ts",
+          "sha256": "6ec3f0baddd939c597c5bcf2dedb955bd27317651f3c3e2c0f797fe2135ab602"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/context-engine.ts",
+          "sha256": "b8e6e740fa0d88fcd9b24cd358910a96bd3993cf3b4a90b5fef3ee85204bf88f"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/index.ts",
+          "sha256": "2194873ff6c884a217a6e8e879a35907f803a3c8350c88adb9593b4700fcd212"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/install-manifest.json",
+          "sha256": "7b86e83ce740175b799986904f851cd4be3c7ec6a6288fdf55ebd37126237307"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/memory-ranking.ts",
+          "sha256": "9b9f3255d6d1cee09fd75e769634701855b9d83374e6ece6d07e656ed723d206"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/openclaw.plugin.json",
+          "sha256": "74e76e88a9ce878022476d068ce1564e9f6df3f63b97a90c38746fd73c5a0ebb"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/package-lock.json",
+          "sha256": "b962a18d3b92fe1afcec589127344e5c3fa88f14ef4148abb3860dc34cf8f8e5"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/package.json",
+          "sha256": "f49a227e5754ca191e932a20b3e29b83f118abd82f073598cb586c9ebdd9ddb2"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/process-manager.ts",
+          "sha256": "ea5d3886e9e3f177d36658d51a3d9f09781f2eb823f3e61e60c049d7c90beb8f"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/session-transcript-repair.ts",
+          "sha256": "39a3c9b8554231aead0d29bbaab5ed30e86189594d855708bfd9a185d77e684c"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/text-utils.ts",
+          "sha256": "2d254e9e289147682aa42d9534b22aab4414b1d8210244630a6b61a1ae6ed8c2"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/tool-call-id.ts",
+          "sha256": "d432bbf28663ef5712094146bd8819ab3dd6f0b5feb637d938a8a07636867c79"
+        },
+        {
+          "path": "vendor/openviking-context-engine/v0.3.5/tsconfig.json",
+          "sha256": "ecb4486ecb1b636b1bc9c192ffefad2bd3a7750a7138ff324321c7b80323bd00"
+        }
+      ]
+    }
+  ]
+}

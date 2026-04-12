@@ -1,0 +1,15 @@
+{
+  "__repro_meta__": {
+    "group": "row1-memory-core",
+    "claim_class": "strict",
+    "notes": [
+      "Do not install OpenViking or LanceDB for row1."
+    ]
+  },
+  "plugins": {
+    "slots": {
+      "memory": "memory-core",
+      "contextEngine": "legacy"
+    }
+  }
+}

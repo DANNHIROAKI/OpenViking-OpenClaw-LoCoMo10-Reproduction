@@ -1,0 +1,159 @@
+{
+  "capture_status": "pending",
+  "captured_at": null,
+  "target_versions": {
+    "openclaw": "2026.3.11",
+    "openviking_runtime": "0.1.18",
+    "node": "22.x",
+    "python": "3.11.x",
+    "judge_model_default": "gpt-4o-mini"
+  },
+  "resolved_model_freeze": {
+    "provider": null,
+    "api_base": null,
+    "deployment_or_endpoint_id": null,
+    "model": "seed-2.0-code",
+    "temperature": null,
+    "max_tokens": null,
+    "reasoning": null,
+    "required_fields": [
+      "provider",
+      "api_base",
+      "deployment_or_endpoint_id",
+      "model"
+    ],
+    "missing_required_fields": [
+      "provider",
+      "api_base",
+      "deployment_or_endpoint_id"
+    ],
+    "complete_for_formal_runs": false
+  },
+  "judge_freeze": {
+    "model": "gpt-4o-mini",
+    "temperature": 0,
+    "response_protocol": "json_via_prompt",
+    "snapshot_files": {
+      "judge.py": {
+        "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/judge.py",
+        "sha256": "26f9a2d4b3007691244a9ea01e15cffc48f74cc841a99632ca2f9607b03835c1"
+      },
+      "judge_util.py": {
+        "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/judge_util.py",
+        "sha256": "537fd74849b322fb1a56d4c9a2bd95fff1ffd0df07c9dfa2ac639e32bcbcbf35"
+      }
+    },
+    "judge_model_changed": false
+  },
+  "observed_versions": {
+    "openclaw": null,
+    "node": null,
+    "python": null,
+    "openviking_runtime": null
+  },
+  "plugin_runtime_constraints": {
+    "row4_context_engine_snapshot_min_openviking_version": "0.2.9",
+    "row4_context_engine_snapshot_min_openclaw_version": "2026.3.7"
+  },
+  "notes": [
+    "Run python3 scripts/freeze_versions.py on the formal experiment host before preflight or any official run."
+  ],
+  "runtime_alignment": {
+    "shared_target_versions": {
+      "openclaw": "2026.3.11",
+      "node": "22.x",
+      "python": "3.11.x"
+    },
+    "row3_openviking_runtime_target": "0.1.18",
+    "row4_context_engine_snapshot_min_openviking_version": "0.2.9",
+    "row4_context_engine_snapshot_min_openclaw_version": "2026.3.7",
+    "model_route_complete": false,
+    "model_route_missing_fields": [
+      "provider",
+      "api_base",
+      "deployment_or_endpoint_id"
+    ]
+  },
+  "group_readiness": {
+    "row1-memory-core": {
+      "group": "row1-memory-core",
+      "checks": [],
+      "model_route_complete": false,
+      "model_route_missing_fields": [
+        "provider",
+        "api_base",
+        "deployment_or_endpoint_id"
+      ],
+      "ready_for_formal_wrapper": false,
+      "blocking_reasons": [
+        "run python3 scripts/freeze_versions.py on the formal experiment host"
+      ],
+      "notes": [],
+      "claim_track": "strict-mainline"
+    },
+    "row2-memory-lancedb": {
+      "group": "row2-memory-lancedb",
+      "checks": [],
+      "model_route_complete": false,
+      "model_route_missing_fields": [
+        "provider",
+        "api_base",
+        "deployment_or_endpoint_id"
+      ],
+      "ready_for_formal_wrapper": false,
+      "blocking_reasons": [
+        "run python3 scripts/freeze_versions.py on the formal experiment host"
+      ],
+      "notes": [],
+      "claim_track": "strict-mainline"
+    },
+    "row3-openviking-minus-core": {
+      "group": "row3-openviking-minus-core",
+      "checks": [],
+      "model_route_complete": false,
+      "model_route_missing_fields": [
+        "provider",
+        "api_base",
+        "deployment_or_endpoint_id"
+      ],
+      "ready_for_formal_wrapper": false,
+      "blocking_reasons": [
+        "run python3 scripts/freeze_versions.py on the formal experiment host"
+      ],
+      "notes": [],
+      "claim_track": "strict-candidate-with-legacy-runtime"
+    },
+    "row4-compat-primary": {
+      "group": "row4-compat-primary",
+      "checks": [],
+      "model_route_complete": false,
+      "model_route_missing_fields": [
+        "provider",
+        "api_base",
+        "deployment_or_endpoint_id"
+      ],
+      "ready_for_formal_wrapper": false,
+      "blocking_reasons": [
+        "run python3 scripts/freeze_versions.py on the formal experiment host"
+      ],
+      "notes": [],
+      "claim_track": "compatibility-mainline"
+    },
+    "row4-exploratory-legacy-nonslot": {
+      "group": "row4-exploratory-legacy-nonslot",
+      "checks": [],
+      "model_route_complete": false,
+      "model_route_missing_fields": [
+        "provider",
+        "api_base",
+        "deployment_or_endpoint_id"
+      ],
+      "ready_for_formal_wrapper": false,
+      "blocking_reasons": [
+        "manual-only exploratory track"
+      ],
+      "notes": [],
+      "claim_track": "exploratory-appendix-only"
+    }
+  }
+}

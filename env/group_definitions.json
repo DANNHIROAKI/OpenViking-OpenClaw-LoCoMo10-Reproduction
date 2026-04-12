@@ -1,0 +1,143 @@
+{
+  "tail_literal": "[remember what's said, keep existing memory]",
+  "parallel": 1,
+  "user_id_pattern": "repro-{run_id}-{group}-sample-{sample_idx}",
+  "formal_gateway_rule": "Official result runs must go through the OpenClaw gateway for both ingest and QA; eval.py --viking is forbidden for main results.",
+  "benchmark_path": "benchmark/locomo10_filtered_no_cat5.json",
+  "groups": [
+    {
+      "group": "row1-memory-core",
+      "official_row": "row1",
+      "target_claim_class": "strict",
+      "effective_claim_class": "strict",
+      "execution_track": "strict-mainline",
+      "manual_only": false,
+      "memory_slot": "memory-core",
+      "context_engine_slot": "legacy",
+      "openviking_snapshot_id": null,
+      "openviking_mode": null,
+      "allow_eval_viking_flag": false,
+      "require_openviking_health": false,
+      "required_actual_configs": [
+        "OPENCLAW_CONFIG_PATH"
+      ],
+      "expected_storage": {
+        "root": "storage/{run_id}/{group}",
+        "lancedb": null,
+        "openviking_workspace": null
+      },
+      "inspect_plugins": [
+        "memory-core"
+      ]
+    },
+    {
+      "group": "row2-memory-lancedb",
+      "official_row": "row2",
+      "target_claim_class": "strict",
+      "effective_claim_class": "strict",
+      "execution_track": "strict-mainline",
+      "manual_only": false,
+      "memory_slot": "memory-lancedb",
+      "context_engine_slot": "legacy",
+      "openviking_snapshot_id": null,
+      "openviking_mode": null,
+      "allow_eval_viking_flag": false,
+      "require_openviking_health": false,
+      "required_actual_configs": [
+        "OPENCLAW_CONFIG_PATH"
+      ],
+      "expected_storage": {
+        "root": "storage/{run_id}/{group}",
+        "lancedb": "storage/{run_id}/{group}/lancedb",
+        "openviking_workspace": null
+      },
+      "inspect_plugins": [
+        "memory-lancedb"
+      ]
+    },
+    {
+      "group": "row3-openviking-minus-core",
+      "official_row": "row3",
+      "target_claim_class": "strict",
+      "effective_claim_class": "compatibility",
+      "execution_track": "strict-candidate-with-public-legacy-snapshot",
+      "manual_only": false,
+      "memory_slot": "memory-openviking",
+      "context_engine_slot": "legacy",
+      "openviking_snapshot_id": "6c60a1d2fb2debd5ac990831350e995473feb6e9",
+      "openviking_mode": "local",
+      "allow_eval_viking_flag": false,
+      "require_openviking_health": true,
+      "required_actual_configs": [
+        "OPENCLAW_CONFIG_PATH",
+        "OPENVIKING_CONFIG_PATH"
+      ],
+      "expected_storage": {
+        "root": "storage/{run_id}/{group}",
+        "lancedb": null,
+        "openviking_workspace": "storage/{run_id}/{group}/openviking-workspace"
+      },
+      "inspect_plugins": [
+        "memory-openviking"
+      ]
+    },
+    {
+      "group": "row4-compat-primary",
+      "official_row": "row4",
+      "target_claim_class": "compatibility",
+      "effective_claim_class": "compatibility",
+      "execution_track": "compatibility-mainline",
+      "manual_only": false,
+      "memory_slot": "memory-core",
+      "context_engine_slot": "openviking",
+      "openviking_snapshot_id": "v0.3.5",
+      "openviking_mode": "local",
+      "allow_eval_viking_flag": false,
+      "require_openviking_health": true,
+      "required_actual_configs": [
+        "OPENCLAW_CONFIG_PATH",
+        "OPENVIKING_CONFIG_PATH"
+      ],
+      "plugin_runtime_constraints": {
+        "context_engine_snapshot_min_openviking_version": "0.2.9",
+        "official_table_openviking_version": "0.1.18"
+      },
+      "expected_storage": {
+        "root": "storage/{run_id}/{group}",
+        "lancedb": null,
+        "openviking_workspace": "storage/{run_id}/{group}/openviking-workspace"
+      },
+      "inspect_plugins": [
+        "memory-core",
+        "openviking"
+      ]
+    },
+    {
+      "group": "row4-exploratory-legacy-nonslot",
+      "official_row": null,
+      "target_claim_class": "exploratory",
+      "effective_claim_class": "exploratory",
+      "execution_track": "exploratory-appendix-only",
+      "manual_only": true,
+      "memory_slot": "modified-legacy-memory-openviking",
+      "context_engine_slot": "legacy-or-custom",
+      "openviking_snapshot_id": "6c60a1d2fb2debd5ac990831350e995473feb6e9-modified",
+      "openviking_mode": "local",
+      "allow_eval_viking_flag": false,
+      "require_openviking_health": true,
+      "required_actual_configs": [
+        "OPENCLAW_CONFIG_PATH",
+        "OPENVIKING_CONFIG_PATH"
+      ],
+      "expected_storage": {
+        "root": "storage/{run_id}/{group}",
+        "lancedb": null,
+        "openviking_workspace": "storage/{run_id}/{group}/openviking-workspace"
+      },
+      "inspect_plugins": [
+        "memory-core",
+        "memory-openviking"
+      ]
+    }
+  ]
+}

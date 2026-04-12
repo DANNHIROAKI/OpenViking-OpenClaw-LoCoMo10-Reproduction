@@ -1,0 +1,33 @@
+{
+  "__repro_meta__": {
+    "group": "row2-memory-lancedb",
+    "claim_class": "strict",
+    "embedding_provider_record": "${LANCEDB_EMBEDDING_PROVIDER}",
+    "notes": [
+      "Runtime shape matches the current memory-lancedb plugin path under plugins.entries.memory-lancedb.config.",
+      "Provider is recorded for audit in meta because current runtime config consumes model/baseUrl/apiKey/dimensions rather than a separate provider field."
+    ]
+  },
+  "plugins": {
+    "slots": {
+      "memory": "memory-lancedb",
+      "contextEngine": "legacy"
+    },
+    "entries": {
+      "memory-lancedb": {
+        "enabled": true,
+        "config": {
+          "dbPath": "storage/{run_id}/{group}/lancedb",
+          "embedding": {
+            "apiKey": "${LANCEDB_EMBEDDING_API_KEY}",
+            "model": "${LANCEDB_EMBEDDING_MODEL}",
+            "baseUrl": "${LANCEDB_EMBEDDING_API_BASE}",
+            "dimensions": "${LANCEDB_EMBEDDING_DIMENSION}"
+          },
+          "autoCapture": true,
+          "autoRecall": true
+        }
+      }
+    }
+  }
+}
