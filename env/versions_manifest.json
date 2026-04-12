@@ -20,12 +20,18 @@
       "provider",
       "api_base",
       "deployment_or_endpoint_id",
-      "model"
+      "model",
+      "temperature",
+      "max_tokens",
+      "reasoning"
     ],
     "missing_required_fields": [
       "provider",
       "api_base",
-      "deployment_or_endpoint_id"
+      "deployment_or_endpoint_id",
+      "temperature",
+      "max_tokens",
+      "reasoning"
     ],
     "complete_for_formal_runs": false
   },
@@ -55,8 +61,30 @@
     "row4_context_engine_snapshot_min_openviking_version": "0.2.9",
     "row4_context_engine_snapshot_min_openclaw_version": "2026.3.7"
   },
+  "group_specific_runtime_freeze": {
+    "row2-memory-lancedb": {
+      "lancedb_embedding_provider": null,
+      "lancedb_embedding_model": null,
+      "lancedb_embedding_api_base": null,
+      "lancedb_embedding_dimension": null,
+      "required_fields": [
+        "lancedb_embedding_provider",
+        "lancedb_embedding_model",
+        "lancedb_embedding_api_base",
+        "lancedb_embedding_dimension"
+      ],
+      "missing_required_fields": [
+        "lancedb_embedding_provider",
+        "lancedb_embedding_model",
+        "lancedb_embedding_api_base",
+        "lancedb_embedding_dimension"
+      ]
+    }
+  },
   "notes": [
-    "Run python3 scripts/freeze_versions.py on the formal experiment host before preflight or any official run."
+    "Run python3 scripts/freeze_versions.py on the formal experiment host before preflight or any official run.",
+    "The committed file is only a placeholder template; formal runs must replace it with a host-captured manifest.",
+    "Row2 formal readiness also requires the LanceDB embedding provider/model/api_base/dimension freeze to be captured."
   ],
   "runtime_alignment": {
     "shared_target_versions": {
@@ -71,7 +99,10 @@
     "model_route_missing_fields": [
       "provider",
       "api_base",
-      "deployment_or_endpoint_id"
+      "deployment_or_endpoint_id",
+      "temperature",
+      "max_tokens",
+      "reasoning"
     ]
   },
   "group_readiness": {
@@ -82,13 +113,18 @@
       "model_route_missing_fields": [
         "provider",
         "api_base",
-        "deployment_or_endpoint_id"
+        "deployment_or_endpoint_id",
+        "temperature",
+        "max_tokens",
+        "reasoning"
       ],
       "ready_for_formal_wrapper": false,
       "blocking_reasons": [
         "run python3 scripts/freeze_versions.py on the formal experiment host"
       ],
-      "notes": [],
+      "notes": [
+        "row1 does not require OpenViking to be installed to execute, but shared environment freeze still records the common target runtime set."
+      ],
       "claim_track": "strict-mainline"
     },
     "row2-memory-lancedb": {
@@ -98,13 +134,19 @@
       "model_route_missing_fields": [
         "provider",
         "api_base",
-        "deployment_or_endpoint_id"
+        "deployment_or_endpoint_id",
+        "temperature",
+        "max_tokens",
+        "reasoning"
       ],
       "ready_for_formal_wrapper": false,
       "blocking_reasons": [
-        "run python3 scripts/freeze_versions.py on the formal experiment host"
+        "run python3 scripts/freeze_versions.py on the formal experiment host",
+        "capture row2 group_specific_runtime_freeze for LanceDB embedding provider/model/api_base/dimension"
       ],
-      "notes": [],
+      "notes": [
+        "row2 is a strict-mainline LanceDB baseline; OpenViking runtime is not execution-critical for this group."
+      ],
       "claim_track": "strict-mainline"
     },
     "row3-openviking-minus-core": {
@@ -114,13 +156,18 @@
       "model_route_missing_fields": [
         "provider",
         "api_base",
-        "deployment_or_endpoint_id"
+        "deployment_or_endpoint_id",
+        "temperature",
+        "max_tokens",
+        "reasoning"
       ],
       "ready_for_formal_wrapper": false,
       "blocking_reasons": [
         "run python3 scripts/freeze_versions.py on the formal experiment host"
       ],
-      "notes": [],
+      "notes": [
+        "row3 uses the vendored legacy memory-openviking path and therefore requires the historical OpenViking 0.1.18 runtime freeze."
+      ],
       "claim_track": "strict-candidate-with-legacy-runtime"
     },
     "row4-compat-primary": {
@@ -130,13 +177,19 @@
       "model_route_missing_fields": [
         "provider",
         "api_base",
-        "deployment_or_endpoint_id"
+        "deployment_or_endpoint_id",
+        "temperature",
+        "max_tokens",
+        "reasoning"
       ],
       "ready_for_formal_wrapper": false,
       "blocking_reasons": [
         "run python3 scripts/freeze_versions.py on the formal experiment host"
       ],
-      "notes": [],
+      "notes": [
+        "row4-compat-primary follows the current public context-engine path; runtime readiness is checked against that snapshot's minimum OpenViking version rather than the official README's 0.1.18.",
+        "A passing row4 compatibility readiness check does not erase the historical-version structural gap recorded elsewhere in the repo."
+      ],
       "claim_track": "compatibility-mainline"
     },
     "row4-exploratory-legacy-nonslot": {
@@ -146,13 +199,18 @@
       "model_route_missing_fields": [
         "provider",
         "api_base",
-        "deployment_or_endpoint_id"
+        "deployment_or_endpoint_id",
+        "temperature",
+        "max_tokens",
+        "reasoning"
       ],
       "ready_for_formal_wrapper": false,
       "blocking_reasons": [
         "manual-only exploratory track"
       ],
-      "notes": [],
+      "notes": [
+        "Exploratory appendix only."
+      ],
       "claim_track": "exploratory-appendix-only"
     }
   }

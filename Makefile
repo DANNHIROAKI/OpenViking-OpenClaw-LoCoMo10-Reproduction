@@ -4,7 +4,32 @@ STAGE ?= micro
 MODE ?= full
 RUNTIME_ENV_FILE := runtime_configs/$(RUN_ID)/$(GROUP)/exports.env
 
-.PHONY: benchmark source-manifest freeze-versions preflight preflight-group preflight-group-online materialize prepare-group ensure-materialized probe micro extended full judge finalize verify summary claim-readiness repeatability audit-sample audit-summary tail-appendix
+.PHONY: \
+	benchmark \
+	source-manifest \
+	freeze-versions \
+	preflight \
+	materialize \
+	prepare-group \
+	ensure-materialized \
+	preflight-group \
+	preflight-group-online \
+	probe \
+	micro \
+	extended \
+	full \
+	micro-complete \
+	extended-complete \
+	full-complete \
+	judge \
+	finalize \
+	verify \
+	summary \
+	claim-readiness \
+	repeatability \
+	audit-sample \
+	audit-summary \
+	tail-appendix
 
 benchmark:
 	python3 scripts/build_benchmark.py
@@ -45,6 +70,15 @@ extended: ensure-materialized
 
 full: ensure-materialized
 	REPRO_RUNTIME_ENV_FILE=$(RUNTIME_ENV_FILE) ./scripts/run_full_group.sh $(GROUP) $(RUN_ID)
+
+micro-complete: micro
+	./scripts/run_judge.sh $(GROUP) $(RUN_ID) smoke micro
+
+extended-complete: extended
+	./scripts/run_judge.sh $(GROUP) $(RUN_ID) smoke extended
+
+full-complete: full
+	./scripts/run_judge.sh $(GROUP) $(RUN_ID) full
 
 judge:
 	./scripts/run_judge.sh $(GROUP) $(RUN_ID) $(MODE) $(if $(filter smoke,$(MODE)),$(STAGE),)

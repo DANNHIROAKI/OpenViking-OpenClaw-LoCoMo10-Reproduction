@@ -1,11 +1,17 @@
 {
   "source": {
     "repo": "volcengine/OpenViking",
-    "readme_cn_anchor": "https://github.com/volcengine/OpenViking/blob/main/README_CN.md#openclaw-上下文插件详情",
+    "official_results_evidence_id": "official-openclaw-result-table",
+    "readme_cn_anchor": "https://github.com/volcengine/OpenViking/blob/31577da/README_CN.md#L660-L675",
+    "readme_cn_blob_url": "https://github.com/volcengine/OpenViking/blob/31577da/README_CN.md#L660-L675",
     "dataset": "LoCoMo10 with category 5 removed (1540 QA cases)",
     "openviking_runtime_version": "0.1.18",
     "task_model": "seed-2.0-code",
-    "eval_repo": "ZaynJarvis/openclaw-eval"
+    "eval_repo": "ZaynJarvis/openclaw-eval",
+    "notes": [
+      "The official result table reference is pinned to an immutable blob ref, not to mutable main.",
+      "row4 is tracked as the official +memory-core line, but this repository still reports it on the compatibility track unless public historical strict evidence is established elsewhere."
+    ]
   },
   "rows": [
     {

@@ -2,10 +2,12 @@
   "__repro_meta__": {
     "group": "row2-memory-lancedb",
     "claim_class": "strict",
-    "embedding_provider_record": "${LANCEDB_EMBEDDING_PROVIDER}",
+    "audit_freeze": {
+      "lancedb_embedding_provider": "${LANCEDB_EMBEDDING_PROVIDER}"
+    },
     "notes": [
       "Runtime shape matches the current memory-lancedb plugin path under plugins.entries.memory-lancedb.config.",
-      "Provider is recorded for audit in meta because current runtime config consumes model/baseUrl/apiKey/dimensions rather than a separate provider field."
+      "The runtime plugin config itself consumes model/baseUrl/apiKey/dimensions; provider is preserved separately in audit_freeze so materialization and host-level freeze can record the resolved embedding provider explicitly."
     ]
   },
   "plugins": {
