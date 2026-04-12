@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 from typing import Any
 
@@ -15,24 +16,31 @@ from _common import (
     collect_env_placeholders,
     get_group_spec,
     group_readiness,
+    is_relative_to,
     load_json,
     merged_env,
     missing_env_vars,
-    parse_json_text,
-    relpath,
+    missing_env_vars,
     render_placeholders,
     run_shell,
     sha256_file,
+    storage_root,
     utc_now,
     write_json,
 )
+from freeze_versions import MODEL_ROUTE_REQUIRED_FIELDS, ROW2_RUNTIME_FREEZE_ENV
 from repo_contract import (
     CI_WORKFLOW,
     ENV_EXAMPLE,
+    GITIGNORE_PATH,
     README_PATH,
     disallowed_env_example_vars,
+    gitignore_missing_required_patterns,
     missing_env_example_vars,
+    official_targets_uses_mutable_refs,
+    public_snapshot_candidates,
     readme_mentions_min_ci,
+    tracked_junk_files,
     workflow_missing_required_commands,
 )
 from runtime_architecture import evaluate_runtime_architecture, normalize_runtime_architecture
@@ -67,13 +75,40 @@ ROW4_REQUIRED = {
     'bypassSessionPatterns', 'ingestReplyAssist', 'ingestReplyAssistMinSpeakerTurns',
     'ingestReplyAssistMinChars', 'emitStandardDiagnostics', 'logFindRequests',
 }
+SENSITIVE_KEY_RE = re.compile(r'(?i)(apikey|api_key|token|secret|password)')
+
 
 
 def rel(path: Path) -> str:
     try:
-        return relpath(path)
+        return str(path.relative_to(ROOT))
     except Exception:
         return str(path)
+
+
+
+def _resolve_env_path(raw: str | None) -> Path | None:
+    if not raw:
+        return None
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        path = (ROOT / path).resolve()
+    return path
+
+
+
+def _snapshot_has_unredacted_sensitive_value(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding='utf-8')
+    except Exception:
+        return False
+    for line in text.splitlines():
+        if '[REDACTED]' in line:
+            continue
+        if SENSITIVE_KEY_RE.search(line):
+            return True
+    return False
+
 
 
 def get_plugin_entry(template: dict[str, Any], plugin_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -87,6 +122,7 @@ def get_plugin_entry(template: dict[str, Any], plugin_id: str) -> tuple[dict[str
     return entry, cfg
 
 
+
 def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
     required = [
         GROUP_DEFS_PATH,
@@ -98,6 +134,7 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
         OFFICIAL_TARGETS,
         PUBLIC_EVIDENCE_MANIFEST,
         ENV_EXAMPLE,
+        GITIGNORE_PATH,
     ]
     for path in required:
         if not path.exists():
@@ -144,21 +181,8 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
             if not path.exists():
                 errors.append(f"source manifest file missing: {file_item['path']}")
                 continue
-            actual = sha256_file(path)
-            if actual != file_item['sha256']:
+            if sha256_file(path) != file_item['sha256']:
                 errors.append(f"sha256 mismatch: {file_item['path']}")
-
-    versions = load_json(VERSIONS_MANIFEST)
-    if versions.get('capture_status') != 'captured':
-        notes.append('env/versions_manifest.json is not captured yet; run python3 scripts/freeze_versions.py on the formal host before any official run')
-    for required_group in ['row1-memory-core', 'row2-memory-lancedb', 'row3-openviking-minus-core', 'row4-compat-primary']:
-        if required_group not in (versions.get('group_readiness') or {}):
-            errors.append(f'env/versions_manifest.json missing group_readiness for {required_group}')
-    judge_files = versions.get('judge_freeze', {}).get('snapshot_files', {})
-    for name in ['judge.py', 'judge_util.py']:
-        item = judge_files.get(name, {})
-        if item and not item.get('sha256'):
-            errors.append(f'judge freeze missing sha256 for {name}')
 
     defs = load_json(GROUP_DEFS_PATH)
     claims = load_json(CLAIM_DECISIONS_PATH)
@@ -205,6 +229,42 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
             errors.append(f'public evidence manifest missing group_claims entry for {group}')
 
 
+
+def validate_versions_route_freeze_contract(errors: list[str], notes: list[str]) -> None:
+    if not VERSIONS_MANIFEST.exists():
+        errors.append('missing env/versions_manifest.json')
+        return
+
+    versions = load_json(VERSIONS_MANIFEST)
+    if versions.get('capture_status') != 'captured':
+        notes.append('env/versions_manifest.json is not captured yet; run python3 scripts/freeze_versions.py on the formal host before any official run')
+
+    resolved = versions.get('resolved_model_freeze') or {}
+    if resolved.get('required_fields') != MODEL_ROUTE_REQUIRED_FIELDS:
+        errors.append('env/versions_manifest.json resolved_model_freeze.required_fields drifted from frozen schema')
+
+    for required_group in ['row1-memory-core', 'row2-memory-lancedb', 'row3-openviking-minus-core', 'row4-compat-primary']:
+        if required_group not in (versions.get('group_readiness') or {}):
+            errors.append(f'env/versions_manifest.json missing group_readiness for {required_group}')
+
+    judge_files = versions.get('judge_freeze', {}).get('snapshot_files', {})
+    for name in ['judge.py', 'judge_util.py']:
+        item = judge_files.get(name, {})
+        if item and not item.get('sha256'):
+            errors.append(f'judge freeze missing sha256 for {name}')
+
+    row2_block = (versions.get('group_specific_runtime_freeze') or {}).get('row2-memory-lancedb') or {}
+    if versions.get('capture_status') == 'captured':
+        missing = [field for field in ROW2_RUNTIME_FREEZE_ENV if not row2_block.get(field)]
+        if missing:
+            errors.append('captured versions manifest missing row2 group_specific_runtime_freeze fields: ' + ', '.join(missing))
+    else:
+        required_fields = [field for field in ROW2_RUNTIME_FREEZE_ENV]
+        if row2_block.get('required_fields') != required_fields:
+            errors.append('pending versions manifest row2 required_fields drifted from frozen schema')
+
+
+
 def validate_env_example_contract(errors: list[str], notes: list[str]) -> None:
     if not ENV_EXAMPLE.exists():
         errors.append('missing .env.example')
@@ -217,6 +277,7 @@ def validate_env_example_contract(errors: list[str], notes: list[str]) -> None:
     disallowed = disallowed_env_example_vars()
     if disallowed:
         errors.append(f'.env.example must not contain runtime-generated keys: {disallowed}')
+
 
 
 def validate_ci_contract(errors: list[str], notes: list[str]) -> None:
@@ -234,6 +295,48 @@ def validate_ci_contract(errors: list[str], notes: list[str]) -> None:
 
     if mentions_ci and not README_PATH.exists():
         errors.append('README is missing while CI contract expects it')
+
+
+
+def validate_gitignore_contract(errors: list[str], notes: list[str]) -> None:
+    if not GITIGNORE_PATH.exists():
+        errors.append('missing .gitignore')
+        return
+    missing = gitignore_missing_required_patterns()
+    if missing:
+        errors.append(f'.gitignore is missing required patterns: {missing}')
+
+
+
+def validate_official_targets_immutable_refs(errors: list[str], notes: list[str]) -> None:
+    mutable = official_targets_uses_mutable_refs()
+    if mutable:
+        errors.append(f'official_targets.json still references mutable refs: {mutable}')
+
+
+
+def validate_no_junk_files(errors: list[str], notes: list[str]) -> None:
+    junk = tracked_junk_files()
+    if junk:
+        errors.append(f'remove tracked junk files/directories: {junk}')
+
+
+
+def validate_public_snapshot_contract(errors: list[str], notes: list[str]) -> None:
+    offenders: list[str] = []
+    for path in public_snapshot_candidates():
+        lowered = path.name.lower()
+        rel_path = rel(path)
+        if '.raw.' in lowered:
+            offenders.append(rel_path)
+            continue
+        if '.actual' not in lowered:
+            continue
+        if _snapshot_has_unredacted_sensitive_value(path):
+            offenders.append(rel_path)
+    if offenders:
+        errors.append('public config snapshot directory contains raw or unredacted actual snapshots: ' + ', '.join(offenders))
+
 
 
 def validate_templates(errors: list[str], notes: list[str]) -> None:
@@ -274,6 +377,10 @@ def validate_templates(errors: list[str], notes: list[str]) -> None:
             emb_missing = emb_required - set(emb)
             if emb_missing:
                 errors.append(f'row2 template embedding missing keys: {sorted(emb_missing)}')
+    row2_meta = row2.get('__repro_meta__') or {}
+    audit_freeze = row2_meta.get('audit_freeze') or {}
+    if audit_freeze.get('lancedb_embedding_provider') != '${LANCEDB_EMBEDDING_PROVIDER}':
+        errors.append('row2 template __repro_meta__.audit_freeze.lancedb_embedding_provider drifted')
 
     row3 = load_json(OPENCLAW_TEMPLATES / 'row3-openviking-minus-core.json')
     row3_entry, row3_cfg = get_plugin_entry(row3, 'memory-openviking')
@@ -345,6 +452,7 @@ def validate_templates(errors: list[str], notes: list[str]) -> None:
             errors.append(f'row4 OpenViking template missing vlm.{key}')
 
 
+
 def _run_runtime_architecture_online(group: str, env_map: dict[str, str]) -> dict[str, Any]:
     spec = get_group_spec(group)
     openclaw_path = Path(env_map['OPENCLAW_CONFIG_PATH']).expanduser()
@@ -370,6 +478,7 @@ def _run_runtime_architecture_online(group: str, env_map: dict[str, str]) -> dic
         'normalized': normalized,
         'runtime_report': runtime_report,
     }
+
 
 
 def validate_group_runtime(group: str, run_id: str, online: bool, errors: list[str], notes: list[str]) -> Path:
@@ -425,6 +534,24 @@ def validate_group_runtime(group: str, run_id: str, online: bool, errors: list[s
     else:
         report['materialization_ok'] = True
 
+    runtime_env_path = _resolve_env_path(env_map.get('REPRO_RUNTIME_ENV_FILE'))
+    manifest_path = _resolve_env_path(env_map.get('REPRO_MATERIALIZATION_MANIFEST'))
+    runtime_dir = _resolve_env_path(env_map.get('REPRO_MATERIALIZATION_DIR'))
+    if runtime_env_path is None or not runtime_env_path.exists():
+        report['blocking_reasons'].append('missing bound REPRO_RUNTIME_ENV_FILE; run materialize first')
+    if manifest_path is None or not manifest_path.exists():
+        report['blocking_reasons'].append('missing bound REPRO_MATERIALIZATION_MANIFEST; run materialize first')
+    if runtime_dir is None or not runtime_dir.exists():
+        report['blocking_reasons'].append('missing bound REPRO_MATERIALIZATION_DIR; run materialize first')
+
+    manifest_obj = None
+    if manifest_path is not None and manifest_path.exists():
+        manifest_obj = load_json(manifest_path)
+        if manifest_obj.get('group') != group:
+            report['blocking_reasons'].append('materialization manifest group mismatch')
+        if manifest_obj.get('run_id') != run_id:
+            report['blocking_reasons'].append('materialization manifest run_id mismatch')
+
     required_paths = {}
     path_errors = []
     for env_name in spec.get('required_actual_configs', []):
@@ -436,12 +563,42 @@ def validate_group_runtime(group: str, run_id: str, online: bool, errors: list[s
         if not path_value.exists():
             path_errors.append(f'{group} runtime required config missing: {env_name} -> {path_value}')
             continue
-        required_paths[env_name] = path_value
+        required_paths[env_name] = path_value.resolve()
     if path_errors:
         report['blocking_reasons'].extend(path_errors)
     else:
         report['actual_config_paths_exist'] = True
         report['actual_config_paths'] = {key: str(value) for key, value in required_paths.items()}
+
+    if runtime_dir is not None and runtime_dir.exists():
+        expected_runtime_dir = runtime_dir.resolve()
+        if expected_runtime_dir.name != group or expected_runtime_dir.parent.name != run_id:
+            report['blocking_reasons'].append('bound runtime materialization dir does not match requested run_id/group')
+        for env_name in ['OPENCLAW_CONFIG_PATH', 'OPENVIKING_CONFIG_PATH']:
+            raw = env_map.get(env_name)
+            if not raw:
+                continue
+            path = _resolve_env_path(raw)
+            if path is None or not path.exists():
+                continue
+            if not is_relative_to(path, expected_runtime_dir):
+                report['blocking_reasons'].append(f'{env_name} is not located under the bound runtime materialization dir')
+
+    expected_storage_root = storage_root(run_id, group).resolve()
+    for env_name in ['OPENCLAW_HOME', 'OPENCLAW_STATE_DIR']:
+        raw = env_map.get(env_name)
+        if not raw:
+            report['blocking_reasons'].append(f'missing {env_name} in runtime exports')
+            continue
+        path = _resolve_env_path(raw)
+        if path is None:
+            report['blocking_reasons'].append(f'invalid {env_name} path')
+            continue
+        if not path.exists():
+            report['blocking_reasons'].append(f'{env_name} path does not exist: {path}')
+            continue
+        if not is_relative_to(path, expected_storage_root):
+            report['blocking_reasons'].append(f'{env_name} escaped storage/{run_id}/{group}')
 
     if online and report['actual_config_paths_exist']:
         try:
@@ -481,6 +638,7 @@ def validate_group_runtime(group: str, run_id: str, online: bool, errors: list[s
     return report_path
 
 
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--group', default=None, help='Optionally validate env/materialization readiness for one group')
@@ -494,9 +652,19 @@ def main() -> None:
 
     validate_repo_structure(errors, notes)
     if not errors:
+        validate_versions_route_freeze_contract(errors, notes)
+    if not errors:
         validate_env_example_contract(errors, notes)
     if not errors:
         validate_ci_contract(errors, notes)
+    if not errors:
+        validate_gitignore_contract(errors, notes)
+    if not errors:
+        validate_official_targets_immutable_refs(errors, notes)
+    if not errors:
+        validate_no_junk_files(errors, notes)
+    if not errors:
+        validate_public_snapshot_contract(errors, notes)
     if not errors:
         validate_templates(errors, notes)
     if args.group and not errors:

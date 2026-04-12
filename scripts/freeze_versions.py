@@ -20,6 +20,7 @@ from _common import (
 JUDGE_PY = ROOT / 'vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/judge.py'
 JUDGE_UTIL_PY = ROOT / 'vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/judge_util.py'
 CONTEXT_INSTALL_MANIFEST = ROOT / 'vendor/openviking-context-engine/v0.3.5/install-manifest.json'
+VERSIONS_MANIFEST = ROOT / 'env/versions_manifest.json'
 
 STRICT_SHARED_TARGETS = {
     'openclaw': '2026.3.11',
@@ -27,6 +28,22 @@ STRICT_SHARED_TARGETS = {
     'python': '3.11.x',
 }
 ROW3_OPENVIKING_TARGET = '0.1.18'
+MODEL_ROUTE_REQUIRED_FIELDS = [
+    'provider',
+    'api_base',
+    'deployment_or_endpoint_id',
+    'model',
+    'temperature',
+    'max_tokens',
+    'reasoning',
+]
+ROW2_RUNTIME_FREEZE_ENV = {
+    'lancedb_embedding_provider': 'LANCEDB_EMBEDDING_PROVIDER',
+    'lancedb_embedding_model': 'LANCEDB_EMBEDDING_MODEL',
+    'lancedb_embedding_api_base': 'LANCEDB_EMBEDDING_API_BASE',
+    'lancedb_embedding_dimension': 'LANCEDB_EMBEDDING_DIMENSION',
+}
+
 
 
 def cmd_text(cmd: list[str]) -> str | None:
@@ -84,22 +101,43 @@ def _model_route_block() -> dict[str, Any]:
         'max_tokens': os.environ.get('OPENCLAW_MODEL_MAX_TOKENS') or None,
         'reasoning': os.environ.get('OPENCLAW_MODEL_REASONING') or None,
     }
-    required = ['provider', 'api_base', 'deployment_or_endpoint_id', 'model']
-    missing = [field for field in required if not block.get(field)]
-    block['required_fields'] = required
+    missing = [field for field in MODEL_ROUTE_REQUIRED_FIELDS if not block.get(field)]
+    block['required_fields'] = list(MODEL_ROUTE_REQUIRED_FIELDS)
     block['missing_required_fields'] = missing
     block['complete_for_formal_runs'] = len(missing) == 0
     return block
 
 
 
-def _group_ready_payload(*, group: str, checks: list[dict[str, Any]], model_route: dict[str, Any], notes: list[str] | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+def _row2_runtime_freeze_block() -> tuple[dict[str, Any], list[str]]:
+    block: dict[str, Any] = {}
+    missing: list[str] = []
+    for field, env_name in ROW2_RUNTIME_FREEZE_ENV.items():
+        value = os.environ.get(env_name) or None
+        block[field] = value
+        if not value:
+            missing.append(field)
+    return block, missing
+
+
+
+def _group_ready_payload(
+    *,
+    group: str,
+    checks: list[dict[str, Any]],
+    model_route: dict[str, Any],
+    notes: list[str] | None = None,
+    extra: dict[str, Any] | None = None,
+    extra_blocking_reasons: list[str] | None = None,
+) -> dict[str, Any]:
     reasons = []
     for item in checks:
         if not item['pass']:
             reasons.append(f"{item['name']} failed rule {item['rule']} (observed={item['observed']!r})")
     if not model_route['complete_for_formal_runs']:
         reasons.append('resolved_model_freeze is incomplete: missing ' + ', '.join(model_route['missing_required_fields']))
+    if extra_blocking_reasons:
+        reasons.extend(extra_blocking_reasons)
     payload: dict[str, Any] = {
         'group': group,
         'checks': checks,
@@ -115,7 +153,12 @@ def _group_ready_payload(*, group: str, checks: list[dict[str, Any]], model_rout
 
 
 
-def _build_group_readiness(observed: dict[str, str | None], model_route: dict[str, Any], plugin_runtime_constraints: dict[str, Any]) -> dict[str, Any]:
+def _build_group_readiness(
+    observed: dict[str, str | None],
+    model_route: dict[str, Any],
+    plugin_runtime_constraints: dict[str, Any],
+    row2_runtime_missing_fields: list[str] | None = None,
+) -> dict[str, Any]:
     strict_shared_checks = [
         _check_exact('openclaw', observed.get('openclaw'), STRICT_SHARED_TARGETS['openclaw']),
         _check_major_minor('node', observed.get('node'), STRICT_SHARED_TARGETS['node']),
@@ -130,6 +173,12 @@ def _build_group_readiness(observed: dict[str, str | None], model_route: dict[st
     row4_checks = strict_shared_checks + [
         _check_min('openviking_runtime', observed.get('openviking_runtime'), row4_min),
     ]
+
+    row2_extra = []
+    if row2_runtime_missing_fields:
+        row2_extra.append(
+            'row2 group_specific_runtime_freeze is incomplete: missing ' + ', '.join(row2_runtime_missing_fields)
+        )
 
     readiness: dict[str, Any] = {}
     readiness['row1-memory-core'] = _group_ready_payload(
@@ -149,6 +198,7 @@ def _build_group_readiness(observed: dict[str, str | None], model_route: dict[st
             'row2 is a strict-mainline LanceDB baseline; OpenViking runtime is not execution-critical for this group.',
         ],
         extra={'claim_track': 'strict-mainline'},
+        extra_blocking_reasons=row2_extra,
     )
     readiness['row3-openviking-minus-core'] = _group_ready_payload(
         group='row3-openviking-minus-core',
@@ -161,25 +211,20 @@ def _build_group_readiness(observed: dict[str, str | None], model_route: dict[st
     )
 
     official_gap = None
-    if observed.get('openviking_runtime'):
-        if not version_matches_exact(observed.get('openviking_runtime'), ROW3_OPENVIKING_TARGET):
-            official_gap = {
-                'official_readme_openviking_version': ROW3_OPENVIKING_TARGET,
-                'observed_openviking_runtime': observed.get('openviking_runtime'),
-                'mismatch': True,
-            }
-        else:
-            official_gap = {
-                'official_readme_openviking_version': ROW3_OPENVIKING_TARGET,
-                'observed_openviking_runtime': observed.get('openviking_runtime'),
-                'mismatch': False,
-            }
+    observed_ov = observed.get('openviking_runtime')
+    if observed_ov:
+        official_gap = {
+            'official_readme_openviking_version': ROW3_OPENVIKING_TARGET,
+            'observed_openviking_runtime': observed_ov,
+            'mismatch': not version_matches_exact(observed_ov, ROW3_OPENVIKING_TARGET),
+        }
+
     readiness['row4-compat-primary'] = _group_ready_payload(
         group='row4-compat-primary',
         checks=row4_checks,
         model_route=model_route,
         notes=[
-            'row4-compat-primary follows the current public context-engine path; runtime readiness is checked against that snapshot\'s minimum OpenViking version rather than the official README\'s 0.1.18.',
+            "row4-compat-primary follows the current public context-engine path; runtime readiness is checked against that snapshot's minimum OpenViking version rather than the official README's 0.1.18.",
             'A passing row4 compatibility readiness check does not erase the historical-version structural gap recorded elsewhere in the repo.',
         ],
         extra={
@@ -188,7 +233,6 @@ def _build_group_readiness(observed: dict[str, str | None], model_route: dict[st
             'official_version_gap': official_gap,
         },
     )
-
     readiness['row4-exploratory-legacy-nonslot'] = {
         'group': 'row4-exploratory-legacy-nonslot',
         'ready_for_formal_wrapper': False,
@@ -205,14 +249,16 @@ def _build_group_readiness(observed: dict[str, str | None], model_route: dict[st
 
 def main() -> None:
     apply_env_file()
-    manifest = load_json(ROOT / 'env/versions_manifest.json')
+    manifest = load_json(VERSIONS_MANIFEST)
     observed = {
         'openclaw': cmd_text(['openclaw', '--version']),
         'node': cmd_text(['node', '-v']),
         'python': cmd_text(['python3', '--version']),
     }
     ov_python = os.environ.get('OPENVIKING_PYTHON', 'python3')
-    observed['openviking_runtime'] = cmd_text([ov_python, '-c', "import openviking,sys;print(getattr(openviking,'__version__','unknown'))"])
+    observed['openviking_runtime'] = cmd_text(
+        [ov_python, '-c', "import openviking,sys;print(getattr(openviking,'__version__','unknown'))"]
+    )
 
     manifest['capture_status'] = 'captured'
     manifest['captured_at'] = utc_now()
@@ -252,24 +298,39 @@ def main() -> None:
         }
     manifest['plugin_runtime_constraints'] = plugin_runtime_constraints
 
+    row2_runtime_freeze, row2_runtime_missing = _row2_runtime_freeze_block()
+    manifest['group_specific_runtime_freeze'] = {
+        'row2-memory-lancedb': row2_runtime_freeze,
+    }
+
     manifest['runtime_alignment'] = {
         'shared_target_versions': STRICT_SHARED_TARGETS,
         'row3_openviking_runtime_target': ROW3_OPENVIKING_TARGET,
-        'row4_context_engine_snapshot_min_openviking_version': plugin_runtime_constraints.get('row4_context_engine_snapshot_min_openviking_version'),
-        'row4_context_engine_snapshot_min_openclaw_version': plugin_runtime_constraints.get('row4_context_engine_snapshot_min_openclaw_version'),
+        'row4_context_engine_snapshot_min_openviking_version': plugin_runtime_constraints.get(
+            'row4_context_engine_snapshot_min_openviking_version'
+        ),
+        'row4_context_engine_snapshot_min_openclaw_version': plugin_runtime_constraints.get(
+            'row4_context_engine_snapshot_min_openclaw_version'
+        ),
         'model_route_complete': model_route['complete_for_formal_runs'],
         'model_route_missing_fields': model_route['missing_required_fields'],
     }
-    manifest['group_readiness'] = _build_group_readiness(observed, model_route, plugin_runtime_constraints)
+    manifest['group_readiness'] = _build_group_readiness(
+        observed,
+        model_route,
+        plugin_runtime_constraints,
+        row2_runtime_missing_fields=row2_runtime_missing,
+    )
 
     manifest['notes'] = [
-        'Re-run python3 scripts/freeze_versions.py after filling .env to refresh this manifest for the formal experiment host.',
-        'The script stores both target values and observed local versions.',
+        'Run python3 scripts/freeze_versions.py on the formal experiment host before preflight or any official run.',
+        'The committed file is only a placeholder template; formal runs must replace it with a host-captured manifest.',
         'Judge freeze is treated as part of the environment freeze.',
         'Mainline wrappers consult env/versions_manifest.json group_readiness and refuse execution when the target group is not ready.',
+        'Row2 formal readiness also requires the LanceDB embedding provider/model/api_base/dimension freeze to be captured.',
     ]
 
-    write_json(ROOT / 'env/versions_manifest.json', manifest)
+    write_json(VERSIONS_MANIFEST, manifest)
     print('Versions manifest captured: env/versions_manifest.json')
 
 

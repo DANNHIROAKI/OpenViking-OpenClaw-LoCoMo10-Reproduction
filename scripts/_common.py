@@ -17,6 +17,7 @@ CLAIM_DECISIONS_PATH = ROOT / 'env/claim_decisions.json'
 OFFICIAL_TARGETS_PATH = ROOT / 'official_targets.json'
 BENCHMARK_PATH = ROOT / 'benchmark/locomo10_filtered_no_cat5.json'
 BENCHMARK_MANIFEST_PATH = ROOT / 'benchmark/manifest.json'
+VERSIONS_MANIFEST_PATH = ROOT / 'env/versions_manifest.json'
 OPENCLAW_EVAL_DIR = ROOT / 'vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888'
 TAIL_LITERAL = "[remember what's said, keep existing memory]"
 PARALLEL = 1
@@ -29,6 +30,7 @@ _VERSION_RE = re.compile(r'(\d+(?:\.\d+)+|\d+)')
 _ENV_KEY_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
 _INT_RE = re.compile(r'-?\d+')
 _FLOAT_RE = re.compile(r'-?(?:\d+\.\d*|\d*\.\d+)')
+_REDACTED_SENTINEL = '[REDACTED]'
 
 
 def parse_numeric_version(text: str | None) -> tuple[int, ...] | None:
@@ -84,10 +86,9 @@ def version_satisfies_min(text: str | None, minimum: str) -> bool:
 
 
 def versions_manifest() -> dict[str, Any]:
-    path = ROOT / 'env/versions_manifest.json'
-    if not path.exists():
+    if not VERSIONS_MANIFEST_PATH.exists():
         return {}
-    return load_json(path)
+    return load_json(VERSIONS_MANIFEST_PATH)
 
 
 def group_readiness(group: str, manifest: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -240,6 +241,14 @@ def ensure_fresh_dir(path: Path, label: str | None = None) -> Path:
     return path
 
 
+def is_relative_to(path: Path, other: Path) -> bool:
+    try:
+        path.resolve().relative_to(other.resolve())
+        return True
+    except Exception:
+        return False
+
+
 def file_sha_if_exists(path: Path | None) -> str | None:
     if path is None or not path.exists() or not path.is_file():
         return None
@@ -365,6 +374,30 @@ def missing_env_vars(value: Any, env: dict[str, str] | None = None) -> list[str]
 def _path_is_sensitive(path: str) -> bool:
     lowered = path.lower()
     return any(token in lowered for token in _SENSITIVE_TOKENS)
+
+
+def path_is_sensitive(path: str) -> bool:
+    return _path_is_sensitive(path)
+
+
+def redact_sensitive_tree(value: Any, path: str = '') -> tuple[Any, list[str]]:
+    redacted_paths: list[str] = []
+
+    def _walk(node: Any, current_path: str) -> Any:
+        if current_path and _path_is_sensitive(current_path):
+            redacted_paths.append(current_path)
+            return _REDACTED_SENTINEL
+        if isinstance(node, dict):
+            out: dict[str, Any] = {}
+            for key, item in node.items():
+                child_path = f'{current_path}.{key}' if current_path else str(key)
+                out[key] = _walk(item, child_path)
+            return out
+        if isinstance(node, list):
+            return [_walk(item, f'{current_path}[{idx}]' if current_path else f'[{idx}]') for idx, item in enumerate(node)]
+        return node
+
+    return _walk(value, path), redacted_paths
 
 
 def _coerce_string(value: str, path: str = '') -> Any:

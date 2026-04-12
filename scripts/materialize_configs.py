@@ -14,7 +14,9 @@ from _common import (
     merged_env,
     path_label,
     render_materialized_config,
+    render_placeholders,
     sha256_file,
+    storage_root,
     to_shell_exports,
     utc_now,
     write_json,
@@ -23,6 +25,7 @@ from _common import (
 
 OPENCLAW_TEMPLATES = ROOT / 'env/openclaw_config_templates'
 OPENVIKING_TEMPLATES = ROOT / 'env/openviking_config_templates'
+
 
 
 def _resolve_out_dir(out_dir: Path) -> Path:
@@ -45,6 +48,11 @@ def _resolve_runtime_path(value: str | None) -> str | None:
 
 
 
+def _template_manifest_entry(path: Path) -> dict[str, Any]:
+    return {'path': str(path.relative_to(ROOT)), 'sha256': sha256_file(path)}
+
+
+
 def _openviking_workspace_path(rendered_ov_config: dict[str, Any] | None) -> str | None:
     if not isinstance(rendered_ov_config, dict):
         return None
@@ -53,6 +61,18 @@ def _openviking_workspace_path(rendered_ov_config: dict[str, Any] | None) -> str
     if workspace in (None, ''):
         return None
     return _resolve_runtime_path(str(workspace))
+
+
+
+def _extract_template_audit_freeze(template_obj: dict[str, Any], mapping: dict[str, str], render_env: dict[str, str]) -> dict[str, Any]:
+    repro_meta = template_obj.get('__repro_meta__') or {}
+    audit_freeze = repro_meta.get('audit_freeze')
+    if not isinstance(audit_freeze, dict):
+        return {}
+    rendered = render_placeholders(audit_freeze, mapping, expand_env=True, env=render_env, strict_env=True)
+    if not isinstance(rendered, dict):
+        raise SystemExit('__repro_meta__.audit_freeze must render to an object')
+    return rendered
 
 
 
@@ -68,7 +88,11 @@ def _derive_runtime_exports(
     manifest_out: Path,
     has_openviking: bool,
     rendered_ov_config: dict[str, Any] | None,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], dict[str, str], str | None]:
+    storage_dir = storage_root(run_id, group).resolve()
+    openclaw_home = (storage_dir / 'openclaw-home').resolve()
+    openclaw_state_dir = (storage_dir / 'openclaw-state').resolve()
+
     exports: dict[str, str] = {
         'REPRO_GROUP': group,
         'REPRO_RUN_ID': run_id,
@@ -76,7 +100,11 @@ def _derive_runtime_exports(
         'REPRO_MATERIALIZATION_DIR': str(runtime_dir.resolve()),
         'REPRO_MATERIALIZATION_MANIFEST': str(manifest_out.resolve()),
         'OPENCLAW_CONFIG_PATH': str(oc_out.resolve()),
+        'OPENCLAW_HOME': str(openclaw_home),
+        'OPENCLAW_STATE_DIR': str(openclaw_state_dir),
     }
+
+    workspace_path = None
     if has_openviking:
         exports['OPENVIKING_CONFIG_PATH'] = str(ov_out.resolve())
         host = render_env.get('OPENVIKING_SERVER_HOST') or str((rendered_ov_config or {}).get('server', {}).get('host') or '127.0.0.1')
@@ -86,25 +114,32 @@ def _derive_runtime_exports(
             health_url = f'http://{host}:{port}/health'
         if health_url:
             exports['OPENVIKING_HEALTH_URL'] = health_url
+
         log_file = render_env.get('OPENVIKING_LOG_FILE')
         if not log_file and isinstance(rendered_ov_config, dict):
             log_file = str((rendered_ov_config.get('log') or {}).get('output') or '').strip() or None
         log_path = _resolve_runtime_path(log_file)
         if log_path:
             exports['OPENVIKING_LOG_FILE'] = log_path
+            ensure_dir(Path(log_path).parent)
+
         workspace_path = _openviking_workspace_path(rendered_ov_config)
         if workspace_path:
             exports['OPENVIKING_WORKSPACE_PATH'] = workspace_path
+            ensure_dir(Path(workspace_path))
+
         for key in ['OPENVIKING_DIAGNOSTIC_ENDPOINT', 'OPENVIKING_DIAGNOSTIC_CMD']:
             value = (render_env.get(key) or '').strip()
             if value:
                 exports[key] = value
-    return exports
 
-
-
-def _template_manifest_entry(path: Path) -> dict[str, Any]:
-    return {'path': str(path.relative_to(ROOT)), 'sha256': sha256_file(path)}
+    ensure_dir(openclaw_home)
+    ensure_dir(openclaw_state_dir)
+    isolation = {
+        'openclaw_home': str(openclaw_home),
+        'openclaw_state_dir': str(openclaw_state_dir),
+    }
+    return exports, isolation, workspace_path
 
 
 
@@ -152,11 +187,13 @@ def materialize(group: str, run_id: str, out_dir: Path, *, force: bool = False) 
         'templates': {},
         'outputs': {},
         'consumed_env_vars': [],
+        'runtime_audit_freeze': {},
     }
 
     consumed_env_vars: set[str] = set()
     has_openviking = False
     rendered_ov_config: dict[str, Any] | None = None
+    runtime_audit_freeze: dict[str, Any] = {}
 
     try:
         ov_template_path = OPENVIKING_TEMPLATES / f'{group}.local.json'
@@ -181,16 +218,21 @@ def materialize(group: str, run_id: str, out_dir: Path, *, force: bool = False) 
             oc_template = load_json(oc_template_path)
             consumed_env_vars.update(collect_env_placeholders(oc_template))
             rendered_oc = render_materialized_config(oc_template, mapping, env=render_env, strict_env=True)
+            if not isinstance(rendered_oc, dict):
+                raise SystemExit(f'{path_label(oc_template_path)} did not render to a JSON object')
             write_json(oc_out, rendered_oc)
             outputs['outputs']['openclaw_config'] = {
                 'path': path_label(final_oc_out),
                 'sha256': sha256_file(oc_out),
             }
+            audit_freeze = _extract_template_audit_freeze(oc_template, mapping, render_env)
+            if audit_freeze:
+                runtime_audit_freeze[group] = audit_freeze
 
         if not outputs['outputs']:
             raise SystemExit(f'no templates found for group {group}')
 
-        runtime_exports = _derive_runtime_exports(
+        runtime_exports, runtime_isolation, workspace_path = _derive_runtime_exports(
             render_env,
             group=group,
             run_id=run_id,
@@ -210,6 +252,8 @@ def materialize(group: str, run_id: str, out_dir: Path, *, force: bool = False) 
         }
         outputs['consumed_env_vars'] = sorted(consumed_env_vars)
         outputs['materialized_exports'] = runtime_exports
+        outputs['runtime_isolation'] = runtime_isolation
+        outputs['runtime_audit_freeze'] = runtime_audit_freeze
 
         created_from_templates = [item['path'] for item in outputs['templates'].values()]
         manifest = {
@@ -218,7 +262,7 @@ def materialize(group: str, run_id: str, out_dir: Path, *, force: bool = False) 
             'generated_at': utc_now(),
             'runtime_dir': str(target_dir.resolve()),
             'runtime_env_file': str(final_exports_out.resolve()),
-            'openviking_workspace_path': runtime_exports.get('OPENVIKING_WORKSPACE_PATH'),
+            'openviking_workspace_path': workspace_path,
             'created_from_templates': created_from_templates,
             'materialization_mode': materialization_mode,
             'replaced_previous_dir': str(replaced_previous_dir.resolve()) if replaced_previous_dir else None,
@@ -226,6 +270,8 @@ def materialize(group: str, run_id: str, out_dir: Path, *, force: bool = False) 
             'outputs': outputs['outputs'],
             'consumed_env_vars': sorted(consumed_env_vars),
             'materialized_exports': runtime_exports,
+            'runtime_isolation': runtime_isolation,
+            'runtime_audit_freeze': runtime_audit_freeze,
         }
         write_json(manifest_out, manifest)
         outputs['outputs']['materialization_manifest'] = {
