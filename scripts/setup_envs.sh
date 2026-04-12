@@ -25,7 +25,7 @@ note "creating OpenViking venv: $OV_VENV_DIR"
 "$OV_VENV_DIR/bin/python" -m pip install -U pip
 "$OV_VENV_DIR/bin/pip" install "openviking==${OPENVIKING_VERSION}"
 
-cat <<EOF
+cat <<EOF2
 
 [NEXT]
 1. Run this once manually:
@@ -34,6 +34,9 @@ cat <<EOF
 2. Then record versions:
    ./scripts/record_versions.sh
 
-3. Then validate the dataset:
-   python3 scripts/check_dataset.py
-EOF
+3. Then validate the dataset and env:
+   ./scripts/preflight.sh
+
+4. Then run row1 smoke:
+   ./scripts/smoke_row1_memory_core.sh
+EOF2

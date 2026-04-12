@@ -8,12 +8,13 @@ ensure_eval_checkout
 ensure_eval_venv
 require_cmd openclaw
 require_env_var OPENCLAW_GATEWAY_TOKEN
+require_env_var LANCEDB_EMBEDDING_API_KEY
 
-"$ROOT/scripts/configure_memory_core.sh"
+"$ROOT/scripts/configure_memory_lancedb.sh"
 
-GROUP="row1-memory-core"
+GROUP="row2-memory-lancedb"
 SAMPLE="${SMOKE_SAMPLE}"
-USER_ID="row1-smoke-s${SAMPLE}"
+USER_ID="row2-smoke-s${SAMPLE}"
 OUTDIR="$SMOKE_RUNS_DIR/$GROUP"
 ensure_dir "$OUTDIR"
 

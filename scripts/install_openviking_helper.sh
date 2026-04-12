@@ -8,10 +8,13 @@ ensure_ov_venv
 note "installing openclaw-openviking-setup-helper"
 npm install -g openclaw-openviking-setup-helper
 
-cat <<EOF
+cat <<EOF2
 
 [READY]
 The helper is installed.
+
+This repo uses the legacy memory-plugin path for row3:
+  OpenClaw + OpenViking Plugin (-memory-core)
 
 Next, run these commands manually in the repo root:
 
@@ -27,4 +30,4 @@ Inside the interactive flow:
 Expected generated files:
 - ~/.openviking/ov.conf
 - ~/.openclaw/openviking.env
-EOF
+EOF2

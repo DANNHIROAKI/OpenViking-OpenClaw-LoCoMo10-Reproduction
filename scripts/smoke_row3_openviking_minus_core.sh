@@ -18,8 +18,8 @@ ENV_FILE="$HOME/.openclaw/openviking.env"
 source "$ENV_FILE"
 
 GROUP="row3-openviking-minus-core"
-SAMPLE=0
-USER_ID="row3-smoke-s0"
+SAMPLE="${SMOKE_SAMPLE}"
+USER_ID="row3-smoke-s${SAMPLE}"
 OUTDIR="$SMOKE_RUNS_DIR/$GROUP"
 ensure_dir "$OUTDIR"
 
@@ -32,7 +32,7 @@ note "running smoke ingest for $GROUP"
     --base-url "$OPENCLAW_BASE_URL" \
     --token "$OPENCLAW_GATEWAY_TOKEN" \
     --sample "$SAMPLE" \
-    --sessions 1-4 \
+    --sessions "$SMOKE_SESSIONS" \
     --user "$USER_ID" \
     --output "$OUTDIR/ingest.txt"
 } 2>&1 | tee "$INGEST_LOG"
@@ -43,7 +43,7 @@ note "running smoke qa for $GROUP"
     --base-url "$OPENCLAW_BASE_URL" \
     --token "$OPENCLAW_GATEWAY_TOKEN" \
     --sample "$SAMPLE" \
-    --count 10 \
+    --count "$SMOKE_QA_COUNT" \
     --user "$USER_ID" \
     --output "$OUTDIR/qa.txt"
 } 2>&1 | tee "$QA_LOG"

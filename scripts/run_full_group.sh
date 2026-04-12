@@ -3,7 +3,7 @@ set -Eeuo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
 
 GROUP="${1:-}"
-[[ -n "$GROUP" ]] || die "usage: $0 <row1-memory-core|row3-openviking-minus-core>"
+[[ -n "$GROUP" ]] || die "usage: $0 <row1-memory-core|row2-memory-lancedb|row3-openviking-minus-core>"
 
 ensure_common_dirs
 ensure_dataset
@@ -15,6 +15,10 @@ require_env_var OPENCLAW_GATEWAY_TOKEN
 case "$GROUP" in
   row1-memory-core)
     "$ROOT/scripts/configure_memory_core.sh"
+    ;;
+  row2-memory-lancedb)
+    require_env_var LANCEDB_EMBEDDING_API_KEY
+    "$ROOT/scripts/configure_memory_lancedb.sh"
     ;;
   row3-openviking-minus-core)
     "$ROOT/scripts/configure_openviking_local.sh"

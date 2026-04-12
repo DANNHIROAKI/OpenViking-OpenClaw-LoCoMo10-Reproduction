@@ -1,56 +1,33 @@
 # OpenViking-OpenClaw-LoCoMo10-Reproduction
 
-这个仓库现在已经从“只准备数据”扩成了“可以直接按步骤执行的复现实验脚手架”。
+这个仓库用于复现 OpenViking 官方 README_CN 中的 LoCoMo10 / OpenClaw 对比实验。
 
-## 当前目标
+## 目标实验
 
-先复现两组最关键、也是公开资料最容易严格对齐的实验：
+官方给出的目标结果如下：
 
-1. `OpenClaw(memory-core)`
-2. `OpenClaw + OpenViking Plugin (-memory-core)`
+| 组别 | 官方任务完成率 | 官方输入 token 总计 |
+|---|---:|---:|
+| OpenClaw(memory-core) | 35.65% | 24,611,530 |
+| OpenClaw + LanceDB (-memory-core) | 44.55% | 51,574,530 |
+| OpenClaw + OpenViking Plugin (-memory-core) | 52.08% | 4,264,396 |
+| OpenClaw + OpenViking Plugin (+memory-core) | 51.23% | 2,099,622 |
 
-先不把 `memory-lancedb` 和 `(+memory-core)` 混进第一阶段：
+仓库内的 `official_targets.json` 已经把这张表编码好了，后续可以直接生成自己的对比结果表。
 
-- `memory-lancedb` 近期在公开 issue 里有人报告过安装/依赖问题。
-- `(+memory-core)` 在当前公开文档里存在 slot 排他带来的配置歧义。
+## 当前仓库能做什么
 
-## 当前数据状态
+这个仓库已经不只是“准备数据”，而是一套按阶段执行的复现实验框架：
 
-数据已经准备好，主输入文件固定为：
-
-- `data/openviking-locomo10-1540/locomo10_openviking_1540.json`
-
-该数据集来自 pinned 的 `openclaw-eval` LoCoMo10 快照，去除了 `category == 5` 后，保留 **1540** 条 QA case。
-详细统计见：
-
-- `data/openviking-locomo10-1540/manifest.json`
-
-## 仓库新增内容
-
-### 目录
-
-- `third_party/`：放上游仓库
-- `scripts/`：一键脚本和工具脚本
-- `runs/smoke/`：单样本冒烟结果
-- `runs/full/`：全量结果
-- `artifacts/`：汇总产物
-- `logs/`：控制台日志
-
-### 脚本
-
-- `scripts/fetch_upstreams.sh`：拉取上游仓库并固定 `openclaw-eval` commit
-- `scripts/setup_envs.sh`：安装 OpenClaw、创建两套 Python 环境
-- `scripts/record_versions.sh`：记录版本信息到 `artifacts/versions.txt`
-- `scripts/configure_memory_core.sh`：切到 `memory-core`
-- `scripts/install_openviking_helper.sh`：安装 OpenViking helper，并提示执行 `ov-install`
-- `scripts/configure_openviking_local.sh`：把 OpenClaw 切到 `memory-openviking`（Local mode）
-- `scripts/smoke_row1_memory_core.sh`：row1 单样本冒烟
-- `scripts/smoke_row3_openviking_minus_core.sh`：row3 单样本冒烟
-- `scripts/run_full_group.sh`：按 group 跑 10 个 sample 的 ingest + qa
-- `scripts/merge_answers.py`：合并所有 `qa.txt.1.jsonl`
-- `scripts/sum_input_tokens.py`：加总每个 group 的输入 token
-- `scripts/judge_group.sh`：调用 `judge.py` 生成评分
-- `scripts/check_dataset.py`：再次验证本地数据集统计
+- 已包含过滤后的 LoCoMo10 数据（1540 QA case）
+- 可以拉取并固定 `openclaw-eval` 上游 commit
+- 可以安装两套隔离环境：`openclaw-eval` + `OpenViking 0.1.18`
+- 可以自动跑三组实验的 smoke / full：
+  - row1: `OpenClaw(memory-core)`
+  - row2: `OpenClaw + LanceDB (-memory-core)`
+  - row3: `OpenClaw + OpenViking Plugin (-memory-core)`
+- 可以汇总 token、合并 answers、运行 judge、生成对比表
+- 对 row4 提供了单独说明文档和决策记录
 
 ## 目录结构
 
@@ -59,10 +36,16 @@
 ├── .env.example
 ├── .gitignore
 ├── Makefile
+├── README.md
+├── official_targets.json
 ├── artifacts/
 ├── data/
 │   └── openviking-locomo10-1540/
 ├── dataset.sh
+├── docs/
+│   ├── PLAN.zh-CN.md
+│   ├── ROW4_NOTES.zh-CN.md
+│   └── TROUBLESHOOTING.zh-CN.md
 ├── logs/
 ├── runs/
 │   ├── full/
@@ -71,166 +54,123 @@
 └── third_party/
 ```
 
-## 0. 先复制环境变量模板
+## 先看哪份文档
+
+- 方案总览：`docs/PLAN.zh-CN.md`
+- row4 为什么先不自动化：`docs/ROW4_NOTES.zh-CN.md`
+- 常见报错和排查：`docs/TROUBLESHOOTING.zh-CN.md`
+
+## 快速开始
+
+### 0. 复制环境变量模板
 
 ```bash
 cp .env.example .env
 ```
 
-至少先填这几个：
+你至少要先填：
 
 - `OPENCLAW_GATEWAY_TOKEN`
 - `OPENVIKING_ARK_API_KEY`
 - `JUDGE_BASE_URL`
 - `JUDGE_API_KEY`
 - `JUDGE_MODEL`
+- 如果要跑 row2：`LANCEDB_EMBEDDING_API_KEY`
 
-如果你的 Python 命令不是默认的 `python3.13` / `python3.10`，也要在 `.env` 里改：
-
-- `EVAL_PYTHON`
-- `OV_PYTHON`
-
-## 1. 拉取上游仓库
+### 1. 拉上游仓库
 
 ```bash
 ./scripts/fetch_upstreams.sh
 ```
 
-这会做两件事：
-
-- 把 `openclaw-eval` 拉到 `third_party/openclaw-eval`
-- 把它固定到 `75e07d696e0db5923ac767109f920df2fc807888`
-- 把 `OpenViking` 拉到 `third_party/OpenViking`
-
-## 2. 安装环境
+### 2. 安装环境
 
 ```bash
 ./scripts/setup_envs.sh
-```
-
-这一步会：
-
-- 安装 `openclaw@2026.3.11`
-- 在 `third_party/openclaw-eval/.venv` 创建 Python 3.13 环境
-- 在仓库根目录 `.venv-ov` 创建 Python 3.10+ 环境，并安装 `openviking==0.1.18`
-
-### 然后手动执行一次
-
-```bash
 openclaw onboard
-```
-
-这里要你自己选择底层 provider / model，并把生成模型固定成你要复现的那一套。
-
-## 3. 记录版本
-
-```bash
 ./scripts/record_versions.sh
-cat artifacts/versions.txt
 ```
 
-## 4. 先验证数据
+### 3. 预检查
 
 ```bash
-python3 scripts/check_dataset.py
+./scripts/preflight.sh
 ```
 
-如果输出里看到：
-
-- `sample_count=10`
-- `total_after=1540`
-- `category_5_present=False`
-
-就说明本地数据仍然是正确的。
-
-## 5. 跑 row1 冒烟
+### 4. 先跑 row1 / row3 冒烟
 
 ```bash
 ./scripts/smoke_row1_memory_core.sh
-```
-
-成功标志：
-
-- 目录 `runs/smoke/row1-memory-core/` 出现 `ingest.txt`、`qa.txt`、`qa.txt.1.jsonl`
-- `qa.txt` 末尾有 `input_tokens / output_tokens / total_tokens`
-
-## 6. 安装并配置 OpenViking 旧版 memory plugin（Local mode）
-
-先装 helper：
-
-```bash
 ./scripts/install_openviking_helper.sh
-```
-
-然后按提示执行：
-
-```bash
-export OPENVIKING_PYTHON="$PWD/.venv-ov/bin/python"
-export OPENVIKING_ARK_API_KEY='你的ark key'
-ov-install
-```
-
-进入交互后：
-
-- 选择 **local mode**
-- 默认路径基本都可以保留
-- 填 Ark API key
-
-运行完成后，会生成：
-
-- `~/.openviking/ov.conf`
-- `~/.openclaw/openviking.env`
-
-接着把 OpenClaw 切到 `memory-openviking`：
-
-```bash
+# 按提示执行 ov-install
 ./scripts/configure_openviking_local.sh
-```
-
-## 7. 跑 row3 冒烟
-
-```bash
 ./scripts/smoke_row3_openviking_minus_core.sh
 ```
 
-成功标志和 row1 一样。
-
-## 8. 只有在两个冒烟都通过后，再跑全量
-
-### row1 全量
+### 5. 冒烟稳定后再跑全量
 
 ```bash
 ./scripts/run_full_group.sh row1-memory-core
-```
-
-### row3 全量
-
-```bash
 ./scripts/run_full_group.sh row3-openviking-minus-core
 ```
 
-## 9. 合并、统计 token、打分
-
-### 合并 answers
+### 6. 再尝试 row2
 
 ```bash
-python3 scripts/merge_answers.py row1-memory-core
-python3 scripts/merge_answers.py row3-openviking-minus-core
+./scripts/patch_memory_lancedb_global.sh
+./scripts/smoke_row2_lancedb.sh
+./scripts/run_full_group.sh row2-memory-lancedb
 ```
 
-### 统计输入 token
+### 7. 汇总结果
 
 ```bash
+python3 scripts/merge_answers.py row1-memory-core --expected 1540
+python3 scripts/merge_answers.py row3-openviking-minus-core --expected 1540
+python3 scripts/merge_answers.py row2-memory-lancedb --expected 1540
+
 python3 scripts/sum_input_tokens.py row1-memory-core
 python3 scripts/sum_input_tokens.py row3-openviking-minus-core
-```
+python3 scripts/sum_input_tokens.py row2-memory-lancedb
 
-### judge
-
-```bash
 ./scripts/judge_group.sh row1-memory-core
 ./scripts/judge_group.sh row3-openviking-minus-core
+./scripts/judge_group.sh row2-memory-lancedb
+
+python3 scripts/build_results_table.py
 ```
+
+## 脚本说明
+
+### 核心准备
+
+- `scripts/fetch_upstreams.sh`：拉取 `openclaw-eval` 和 `OpenViking`
+- `scripts/setup_envs.sh`：安装 OpenClaw、创建两套 venv
+- `scripts/record_versions.sh`：写出 `artifacts/versions.txt`
+- `scripts/preflight.sh`：检查数据、环境变量、目录和常用命令
+- `scripts/diagnose_openclaw.sh`：导出 OpenClaw 状态和插件列表
+
+### 组别切换
+
+- `scripts/configure_memory_core.sh`
+- `scripts/configure_memory_lancedb.sh`
+- `scripts/patch_memory_lancedb_global.sh`
+- `scripts/configure_openviking_local.sh`
+
+### 运行实验
+
+- `scripts/smoke_row1_memory_core.sh`
+- `scripts/smoke_row2_lancedb.sh`
+- `scripts/smoke_row3_openviking_minus_core.sh`
+- `scripts/run_full_group.sh`
+
+### 汇总结果
+
+- `scripts/merge_answers.py`
+- `scripts/sum_input_tokens.py`
+- `scripts/judge_group.sh`
+- `scripts/build_results_table.py`
+- `scripts/check_dataset.py`
 
 ## Makefile 快捷命令
 
@@ -238,49 +178,30 @@ python3 scripts/sum_input_tokens.py row3-openviking-minus-core
 make fetch-upstreams
 make setup-envs
 make versions
+make preflight
+make diagnose-openclaw
 make smoke-row1
 make install-ov-helper
 make configure-ov-local
 make smoke-row3
+make patch-row2
+make configure-row2
+make smoke-row2
 make full-row1
+make full-row2
 make full-row3
 make merge-row1
+make merge-row2
 make merge-row3
 make judge-row1
+make judge-row2
 make judge-row3
+make summary
 ```
 
-## 关键注意事项
+## 重要注意事项
 
-### 1）`qa` 和 `ingest` 必须显式传同一个 `--user`
-
-上游 `eval.py` 的默认值并不对称。这个仓库里的脚本已经全部显式传了 `USER_ID`，不要再依赖默认值。
-
-### 2）这里复现的是 **旧版** `memory-openviking`
-
-不是新版 `context-engine` 插件。
-
-### 3）先不要碰 row4
-
-当前公开文档里 `memory` slot 是排他的，所以 `OpenViking Plugin (+memory-core)` 暂时不放进第一阶段。
-
-### 4）Local mode 必须先 source `~/.openclaw/openviking.env`
-
-本仓库里相关脚本会自动处理，但前提是 `ov-install` 已经成功执行过一次。
-
-## 推荐执行顺序
-
-```bash
-cp .env.example .env
-./scripts/fetch_upstreams.sh
-./scripts/setup_envs.sh
-openclaw onboard
-./scripts/record_versions.sh
-python3 scripts/check_dataset.py
-./scripts/smoke_row1_memory_core.sh
-./scripts/install_openviking_helper.sh
-# 按提示执行 ov-install
-./scripts/configure_openviking_local.sh
-./scripts/smoke_row3_openviking_minus_core.sh
-# 两个冒烟都稳了，再跑全量
-```
+1. `ingest` 和 `qa` 必须显式传同一个 `--user`。本仓库里的运行脚本都已经固定这么做。
+2. row3 用的是旧版 `memory-openviking` 路径，不是新版 `openviking` context-engine 插件。
+3. row2 当前最好放在 row1 / row3 之后，因为 `memory-lancedb` 最近有多条公开 issue 指向依赖缺失或插件无法加载。
+4. row4 目前不做“一键自动化”，原因见 `docs/ROW4_NOTES.zh-CN.md`。
