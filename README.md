@@ -57,6 +57,8 @@
 ## 先看哪份文档
 
 - 方案总览：`docs/PLAN.zh-CN.md`
+- 逐项勾选清单：`docs/CHECKLIST.zh-CN.md`
+- 一屏内可复制命令：`docs/COMMANDS.zh-CN.md`
 - row4 为什么先不自动化：`docs/ROW4_NOTES.zh-CN.md`
 - 常见报错和排查：`docs/TROUBLESHOOTING.zh-CN.md`
 
@@ -97,32 +99,33 @@ openclaw onboard
 ./scripts/preflight.sh
 ```
 
-### 4. 先跑 row1 / row3 冒烟
+### 4. 阶段 A：直接跑 row1 / row3 冒烟包装脚本
 
 ```bash
-./scripts/smoke_row1_memory_core.sh
-./scripts/install_openviking_helper.sh
-# 按提示执行 ov-install
-./scripts/configure_openviking_local.sh
-./scripts/smoke_row3_openviking_minus_core.sh
+./scripts/phase_a_smoke.sh
 ```
 
-### 5. 冒烟稳定后再跑全量
+如果脚本提示你先执行 `ov-install`，按提示做完后再重新运行它。
+
+### 5. 阶段 B：row1 / row3 全量 + 合并 + judge + summary
 
 ```bash
-./scripts/run_full_group.sh row1-memory-core
-./scripts/run_full_group.sh row3-openviking-minus-core
+./scripts/phase_b_full_core_and_ov.sh
 ```
 
-### 6. 再尝试 row2
+### 6. 阶段 C：再尝试 row2
 
 ```bash
-./scripts/patch_memory_lancedb_global.sh
-./scripts/smoke_row2_lancedb.sh
-./scripts/run_full_group.sh row2-memory-lancedb
+./scripts/phase_c_row2.sh
 ```
 
-### 7. 汇总结果
+### 7. 随时查看“下一步该跑什么”
+
+```bash
+python3 scripts/status_matrix.py
+```
+
+### 8. 汇总结果
 
 ```bash
 python3 scripts/merge_answers.py row1-memory-core --expected 1540
@@ -159,10 +162,14 @@ python3 scripts/build_results_table.py
 
 ### 运行实验
 
+- `scripts/phase_a_smoke.sh`
+- `scripts/phase_b_full_core_and_ov.sh`
+- `scripts/phase_c_row2.sh`
 - `scripts/smoke_row1_memory_core.sh`
 - `scripts/smoke_row2_lancedb.sh`
 - `scripts/smoke_row3_openviking_minus_core.sh`
 - `scripts/run_full_group.sh`
+- `scripts/row4_probe.sh`
 
 ### 汇总结果
 
@@ -170,6 +177,8 @@ python3 scripts/build_results_table.py
 - `scripts/sum_input_tokens.py`
 - `scripts/judge_group.sh`
 - `scripts/build_results_table.py`
+- `scripts/status_matrix.py`
+- `scripts/collect_debug_bundle.sh`
 - `scripts/check_dataset.py`
 
 ## Makefile 快捷命令
@@ -179,14 +188,17 @@ make fetch-upstreams
 make setup-envs
 make versions
 make preflight
+make status
 make diagnose-openclaw
-make smoke-row1
+make phase-a
 make install-ov-helper
 make configure-ov-local
-make smoke-row3
+make phase-b
 make patch-row2
 make configure-row2
-make smoke-row2
+make phase-c
+make row4-probe
+make bundle
 make full-row1
 make full-row2
 make full-row3

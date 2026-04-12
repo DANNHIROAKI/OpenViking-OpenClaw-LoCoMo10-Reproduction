@@ -1,4 +1,9 @@
-.PHONY: fetch-upstreams setup-envs versions preflight diagnose-openclaw 	smoke-row1 install-ov-helper configure-ov-local smoke-row3 	patch-row2 configure-row2 smoke-row2 	full-row1 full-row2 full-row3 	merge-row1 merge-row2 merge-row3 	judge-row1 judge-row2 judge-row3 summary check-dataset
+.PHONY: fetch-upstreams setup-envs versions preflight status diagnose-openclaw phase-a phase-b phase-c row4-probe bundle \
+	smoke-row1 install-ov-helper configure-ov-local smoke-row3 \
+	patch-row2 configure-row2 smoke-row2 \
+	full-row1 full-row2 full-row3 \
+	merge-row1 merge-row2 merge-row3 \
+	judge-row1 judge-row2 judge-row3 summary check-dataset
 
 fetch-upstreams:
 	./scripts/fetch_upstreams.sh
@@ -14,6 +19,24 @@ preflight:
 
 diagnose-openclaw:
 	./scripts/diagnose_openclaw.sh
+
+status:
+	python3 scripts/status_matrix.py
+
+phase-a:
+	./scripts/phase_a_smoke.sh
+
+phase-b:
+	./scripts/phase_b_full_core_and_ov.sh
+
+phase-c:
+	./scripts/phase_c_row2.sh
+
+row4-probe:
+	./scripts/row4_probe.sh
+
+bundle:
+	./scripts/collect_debug_bundle.sh
 
 check-dataset:
 	python3 scripts/check_dataset.py

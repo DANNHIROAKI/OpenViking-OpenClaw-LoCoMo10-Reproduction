@@ -230,3 +230,12 @@ python3 scripts/build_results_table.py
 ./scripts/smoke_row2_lancedb.sh
 ./scripts/run_full_group.sh row2-memory-lancedb
 ```
+
+
+## 新增的一键包装脚本
+
+- `./scripts/phase_a_smoke.sh`：把 preflight、row1 smoke、row3 smoke 串起来；如果缺少 `ov-install` 生成的 env 文件，会停下来明确告诉你下一条命令。
+- `./scripts/phase_b_full_core_and_ov.sh`：顺序跑 row1 / row3 全量，并自动 merge、sum tokens、judge、生成 summary。
+- `./scripts/phase_c_row2.sh`：顺序跑 row2 的 patch、smoke、full、merge、judge、summary。
+- `python3 scripts/status_matrix.py`：根据仓库中已经生成的文件，告诉你“当前做到哪一步、下一条最推荐的命令是什么”。
+- `./scripts/row4_probe.sh`：不跑 row4，只导出当前 OpenClaw 插件状态，作为后续调查材料。
