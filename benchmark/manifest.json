@@ -1,15 +1,23 @@
 {
-  "generated_at": "2026-04-12T13:47:24Z",
-  "generator": "scripts/build_benchmark.py",
-  "source": {
-    "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/locomo10.json",
-    "sha256": "bee5d85e9ee5dcbec79906fabbda6da64aac01ac3d30ad7bad55ae90d28c3c6a"
+  "byte_identical_raw_copy": true,
+  "counts": {
+    "category_counts_after_filter": {
+      "1": 282,
+      "2": 321,
+      "3": 96,
+      "4": 841
+    },
+    "category_counts_before_filter": {
+      "1": 282,
+      "2": 321,
+      "3": 96,
+      "4": 841,
+      "5": 446
+    },
+    "filtered_total_qas": 1540,
+    "raw_total_qas": 1986
   },
   "files": {
-    "locomo10_raw.json": {
-      "path": "benchmark/locomo10_raw.json",
-      "sha256": "bee5d85e9ee5dcbec79906fabbda6da64aac01ac3d30ad7bad55ae90d28c3c6a"
-    },
     "locomo10_filtered_no_cat5.json": {
       "path": "benchmark/locomo10_filtered_no_cat5.json",
       "sha256": "64e32f5c4bd9247740cd700cecf1c9f1260947689e8186af94bdff37cf91616e"
@@ -17,9 +25,116 @@
     "locomo10_filtered_no_cat5.jsonl": {
       "path": "benchmark/locomo10_filtered_no_cat5.jsonl",
       "sha256": "31450f345135bf25aaac1fe9e3d3f342816bd73ed83696247c91da28fff2fe56"
+    },
+    "locomo10_raw.json": {
+      "path": "benchmark/locomo10_raw.json",
+      "sha256": "bee5d85e9ee5dcbec79906fabbda6da64aac01ac3d30ad7bad55ae90d28c3c6a"
     }
   },
-  "byte_identical_raw_copy": true,
+  "filter_rule": "keep QA where str(category) != \"5\"; preserve original sample order and QA content",
+  "generated_at": "2026-04-12T20:24:05Z",
+  "generator": "scripts/build_benchmark.py",
+  "per_sample": [
+    {
+      "category_breakdown": {
+        "1": 32,
+        "2": 37,
+        "3": 13,
+        "4": 70
+      },
+      "kept_cases": 152,
+      "sample_id": "conv-26"
+    },
+    {
+      "category_breakdown": {
+        "1": 11,
+        "2": 26,
+        "4": 44
+      },
+      "kept_cases": 81,
+      "sample_id": "conv-30"
+    },
+    {
+      "category_breakdown": {
+        "1": 31,
+        "2": 27,
+        "3": 8,
+        "4": 86
+      },
+      "kept_cases": 152,
+      "sample_id": "conv-41"
+    },
+    {
+      "category_breakdown": {
+        "1": 37,
+        "2": 40,
+        "3": 11,
+        "4": 111
+      },
+      "kept_cases": 199,
+      "sample_id": "conv-42"
+    },
+    {
+      "category_breakdown": {
+        "1": 31,
+        "2": 26,
+        "3": 14,
+        "4": 107
+      },
+      "kept_cases": 178,
+      "sample_id": "conv-43"
+    },
+    {
+      "category_breakdown": {
+        "1": 30,
+        "2": 24,
+        "3": 7,
+        "4": 62
+      },
+      "kept_cases": 123,
+      "sample_id": "conv-44"
+    },
+    {
+      "category_breakdown": {
+        "1": 20,
+        "2": 34,
+        "3": 13,
+        "4": 83
+      },
+      "kept_cases": 150,
+      "sample_id": "conv-47"
+    },
+    {
+      "category_breakdown": {
+        "1": 21,
+        "2": 42,
+        "3": 10,
+        "4": 118
+      },
+      "kept_cases": 191,
+      "sample_id": "conv-48"
+    },
+    {
+      "category_breakdown": {
+        "1": 37,
+        "2": 33,
+        "3": 13,
+        "4": 73
+      },
+      "kept_cases": 156,
+      "sample_id": "conv-49"
+    },
+    {
+      "category_breakdown": {
+        "1": 32,
+        "2": 32,
+        "3": 7,
+        "4": 87
+      },
+      "kept_cases": 158,
+      "sample_id": "conv-50"
+    }
+  ],
   "sample_order": [
     "conv-26",
     "conv-30",
@@ -32,123 +147,8 @@
     "conv-49",
     "conv-50"
   ],
-  "counts": {
-    "raw_total_qas": 1986,
-    "filtered_total_qas": 1540,
-    "category_counts_before_filter": {
-      "1": 282,
-      "2": 321,
-      "3": 96,
-      "4": 841,
-      "5": 446
-    },
-    "category_counts_after_filter": {
-      "1": 282,
-      "2": 321,
-      "3": 96,
-      "4": 841
-    }
-  },
-  "per_sample": [
-    {
-      "sample_id": "conv-26",
-      "kept_cases": 152,
-      "category_breakdown": {
-        "1": 32,
-        "2": 37,
-        "3": 13,
-        "4": 70
-      }
-    },
-    {
-      "sample_id": "conv-30",
-      "kept_cases": 81,
-      "category_breakdown": {
-        "1": 11,
-        "2": 26,
-        "4": 44
-      }
-    },
-    {
-      "sample_id": "conv-41",
-      "kept_cases": 152,
-      "category_breakdown": {
-        "1": 31,
-        "2": 27,
-        "3": 8,
-        "4": 86
-      }
-    },
-    {
-      "sample_id": "conv-42",
-      "kept_cases": 199,
-      "category_breakdown": {
-        "1": 37,
-        "2": 40,
-        "3": 11,
-        "4": 111
-      }
-    },
-    {
-      "sample_id": "conv-43",
-      "kept_cases": 178,
-      "category_breakdown": {
-        "1": 31,
-        "2": 26,
-        "3": 14,
-        "4": 107
-      }
-    },
-    {
-      "sample_id": "conv-44",
-      "kept_cases": 123,
-      "category_breakdown": {
-        "1": 30,
-        "2": 24,
-        "3": 7,
-        "4": 62
-      }
-    },
-    {
-      "sample_id": "conv-47",
-      "kept_cases": 150,
-      "category_breakdown": {
-        "1": 20,
-        "2": 34,
-        "3": 13,
-        "4": 83
-      }
-    },
-    {
-      "sample_id": "conv-48",
-      "kept_cases": 191,
-      "category_breakdown": {
-        "1": 21,
-        "2": 42,
-        "3": 10,
-        "4": 118
-      }
-    },
-    {
-      "sample_id": "conv-49",
-      "kept_cases": 156,
-      "category_breakdown": {
-        "1": 37,
-        "2": 33,
-        "3": 13,
-        "4": 73
-      }
-    },
-    {
-      "sample_id": "conv-50",
-      "kept_cases": 158,
-      "category_breakdown": {
-        "1": 32,
-        "2": 32,
-        "3": 7,
-        "4": 87
-      }
-    }
-  ],
-  "filter_rule": "keep QA where str(category) != \"5\"; preserve original sample order and QA content"
+  "source": {
+    "path": "vendor/openclaw-eval/75e07d696e0db5923ac767109f920df2fc807888/locomo10.json",
+    "sha256": "bee5d85e9ee5dcbec79906fabbda6da64aac01ac3d30ad7bad55ae90d28c3c6a"
+  }
 }

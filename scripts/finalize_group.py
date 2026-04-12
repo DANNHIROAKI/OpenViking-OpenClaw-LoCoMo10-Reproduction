@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from _common import get_claim_decision, get_group_spec, load_json, run_root, utc_now, write_json
+from _common import PARALLEL, TAIL_LITERAL, get_claim_decision, get_group_spec, load_json, run_root, user_id, utc_now, write_json
 
 
 EXPECTED_SAMPLE_COUNTS = {
@@ -13,6 +13,7 @@ EXPECTED_SAMPLE_COUNTS = {
     ('smoke', 'micro'): 1,
     ('smoke', 'extended'): 2,
 }
+
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -25,6 +26,26 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return items
 
 
+
+def _flag_values(cmd: list[str], flag: str) -> list[str]:
+    values: list[str] = []
+    for idx, item in enumerate(cmd):
+        if item == flag and idx + 1 < len(cmd):
+            values.append(cmd[idx + 1])
+        elif item.startswith(f'{flag}='):
+            values.append(item.split('=', 1)[1])
+    return values
+
+
+
+def _single_flag_value(cmd: list[str], flag: str) -> str | None:
+    values = _flag_values(cmd, flag)
+    if len(values) != 1:
+        return None
+    return values[0]
+
+
+
 def _parallel_is_one(cmd: list[str]) -> bool:
     for i, item in enumerate(cmd):
         if item in {'-p', '--parallel'} and i + 1 < len(cmd):
@@ -32,6 +53,18 @@ def _parallel_is_one(cmd: list[str]) -> bool:
         if item.startswith('--parallel='):
             return item.split('=', 1)[1] == '1'
     return False
+
+
+
+def _expected_user(run_id: str, group: str, sample_idx: int) -> str:
+    return user_id(run_id, group, sample_idx)
+
+
+
+def _append_once(items: list[str], reason: str) -> None:
+    if reason not in items:
+        items.append(reason)
+
 
 
 def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
@@ -169,6 +202,34 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     if not parallel_valid:
         invalidity_reasons.append('parallel != 1 in qa command')
 
+    if run_spec.get('tail_literal') != TAIL_LITERAL:
+        invalidity_reasons.append('run_spec tail literal drifted from frozen group definition')
+    if run_spec.get('parallel') != PARALLEL:
+        invalidity_reasons.append('run_spec parallel drifted from frozen group definition')
+    if run_spec.get('gateway_only') is not True:
+        invalidity_reasons.append('run_spec gateway_only flag missing or false')
+    if run_spec.get('forbid_eval_viking_flag') is not True:
+        invalidity_reasons.append('run_spec forbid_eval_viking_flag missing or false')
+
+    for sample_meta in run_meta['samples']:
+        sample_idx = sample_meta['sample_idx']
+        expected_user = _expected_user(run_id, group, sample_idx)
+        ingest_user_flag = _single_flag_value(sample_meta['ingest_command'], '--user')
+        qa_user_flag = _single_flag_value(sample_meta['qa_command'], '--user')
+        if not (
+            sample_meta.get('ingest_user') == expected_user
+            and sample_meta.get('qa_user') == expected_user
+            and ingest_user_flag == expected_user
+            and qa_user_flag == expected_user
+        ):
+            _append_once(invalidity_reasons, 'sample user id drifted from frozen user pattern')
+
+        tail_values = _flag_values(sample_meta['ingest_command'], '--tail')
+        if len(tail_values) != 1:
+            _append_once(invalidity_reasons, 'ingest command missing required --tail')
+        elif tail_values[0] != run_spec.get('tail_literal'):
+            _append_once(invalidity_reasons, 'ingest command tail literal drifted from frozen spec')
+
     for cfg_name in ['openclaw', 'openviking']:
         if cfg_name == 'openviking' and spec.get('openviking_mode') is None:
             continue
@@ -251,6 +312,7 @@ def summarize(group: str, run_id: str, mode: str, stage: str | None) -> Path:
     write_json(root_path / 'run_summary.json', summary)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return root_path
+
 
 
 def main() -> None:

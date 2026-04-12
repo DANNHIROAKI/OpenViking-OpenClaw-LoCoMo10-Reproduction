@@ -1,25 +1,24 @@
 # OpenViking × OpenClaw × LoCoMo10 复现仓库
 
-本仓库对应 `repro_spec_v2.md`。它的目标不是“先跑出一组数”，而是提供一套**可公开审计、可二次复跑、可区分 strict / compatibility / exploratory 声称边界**的复现实验 harness。
+本仓库对应 `repro_spec_v2.md`。目标不是“先跑出一组数”，而是提供一套**可公开审计、可二次复跑、可区分 strict / compatibility / exploratory 声称边界**的复现实验 harness。仓库的科学口径以 `repro_spec_v2.md`、`env/group_definitions.json`、`env/claim_decisions.json` 为准，其中 row4 默认仍按 compatibility 处理，row3 也不会因为工程闭环变完整就自动升级为 strict。
 
 ## 范围与口径
 
-本仓库的**主执行线**是：
+主执行线：
 
 - `row1-memory-core`
 - `row2-memory-lancedb`
 - `row3-openviking-minus-core`
 - `row4-compat-primary`
 
-另有：
+附录线：
 
-- `row4-exploratory-legacy-nonslot`：仅附录 / exploratory，不进入主结果表
+- `row4-exploratory-legacy-nonslot`：仅 appendix / exploratory，不进入主结果表
 
-**对外 claim 的唯一真相源是 `env/claim_decisions.json`。**
-当前仓库中：
+**对外 claim 的唯一真相源是 `env/claim_decisions.json`。** 当前仓库中：
 
 - `row1` / `row2` 为 strict mainline
-- `row3` 仍按 **compatibility** 口径处理，不能因为执行主线包含它，就把它自动写成 strict
+- `row3` 仍按 compatibility 口径处理
 - `row4-compat-primary` 为 compatibility
 
 ## 目录
@@ -45,42 +44,46 @@ pip install -r requirements.txt
 
 python3 scripts/build_benchmark.py
 python3 scripts/generate_source_manifest.py
+python3 scripts/freeze_versions.py   # 必须在正式实验机上执行一次
 python3 scripts/preflight.py
 ```
 
 说明：
 
-- `env/versions_manifest.json` 随仓库提供的是**模板占位文件**，不会直接用于正式实验。
+- `env/versions_manifest.json` 随仓库提供的是模板占位文件，不会直接作为正式实验 freeze 使用。
 - 开始正式实验前，必须在目标实验机上执行 `python3 scripts/freeze_versions.py`，把运行时版本、模型路由、judge freeze 真正捕获到 `env/versions_manifest.json`。
 - `python3 scripts/preflight.py` 是静态验收；`python3 scripts/preflight.py --group ... --online` 会额外检查 live runtime architecture / OpenViking health。
 
 ## materialize → preflight → run 的闭环
 
-本仓库现在的执行链已经固定为：
+执行链固定为：
 
 ```text
 materialize -> exports.env -> preflight -> probe / micro / extended / full
 ```
 
-也就是说，下面这些命令会自动：
+这里的 `materialize` 是**显式且不可漂移**的冻结步骤：
 
-1. 生成 `runtime_configs/<run_id>/<group>/openclaw.json`
-2. 生成 `runtime_configs/<run_id>/<group>/ov.conf`（若该组需要）
-3. 生成 `runtime_configs/<run_id>/<group>/exports.env`
-4. 通过 `REPRO_RUNTIME_ENV_FILE` 把这次 run 的 actual config path 注入后续脚本
+- 它会把模板渲染为 `runtime_configs/<run_id>/<group>/openclaw.json`
+- 若该组需要 OpenViking，也会生成 `runtime_configs/<run_id>/<group>/ov.conf`
+- 它会生成 `runtime_configs/<run_id>/<group>/exports.env`
+- 它会写出 `runtime_configs/<run_id>/<group>/materialization_manifest.json`
 
-所以**不再需要手工 export `OPENCLAW_CONFIG_PATH` / `OPENVIKING_CONFIG_PATH`**。
+后续的 `preflight-group`、`probe`、`micro`、`extended`、`full` **只消费已经生成好的 `exports.env`**，不会隐式 rematerialize，也不会静默覆盖已有 `runtime_configs/<run_id>/<group>`。如果要重做同一 `run_id/group`，请显式使用新的 `RUN_ID`，或直接调用 `python3 scripts/materialize_configs.py ... --force`。
 
 ## 常用命令
 
+先显式 materialize：
+
 ```bash
-make benchmark
-make source-manifest
-make freeze-versions
-make preflight
+make materialize GROUP=row3-openviking-minus-core RUN_ID=row3-preflight-001
 make preflight-group GROUP=row3-openviking-minus-core RUN_ID=row3-preflight-001
 make preflight-group-online GROUP=row3-openviking-minus-core RUN_ID=row3-preflight-001
+```
 
+再执行 probe / smoke / full：
+
+```bash
 make probe GROUP=row1-memory-core RUN_ID=row1-probe-001
 make micro GROUP=row1-memory-core RUN_ID=row1-smoke-001
 make extended GROUP=row1-memory-core RUN_ID=row1-smoke-002
@@ -90,9 +93,12 @@ make finalize GROUP=row1-memory-core RUN_ID=row1-full-001 MODE=full
 make summary
 ```
 
-也可直接调用 wrapper：
+也可直接调用 wrapper，但前提仍然是先 `materialize`，并导入这次 run 对应的 `exports.env`：
 
 ```bash
+python3 scripts/materialize_configs.py <group> <run_id>
+export REPRO_RUNTIME_ENV_FILE=runtime_configs/<run_id>/<group>/exports.env
+
 ./scripts/run_probe.sh <group> <run_id>
 ./scripts/run_smoke.sh <group> <run_id> micro
 ./scripts/run_smoke.sh <group> <run_id> extended
@@ -100,11 +106,10 @@ make summary
 ./scripts/run_judge.sh <group> <run_id> full
 ```
 
-前提是你已经先执行过：
+如果想“一键准备”，可以用：
 
 ```bash
-python3 scripts/materialize_configs.py <group> <run_id>
-export REPRO_RUNTIME_ENV_FILE=runtime_configs/<run_id>/<group>/exports.env
+make prepare-group GROUP=row1-memory-core RUN_ID=row1-preflight-001
 ```
 
 ## 建议执行顺序
@@ -125,7 +130,7 @@ export REPRO_RUNTIME_ENV_FILE=runtime_configs/<run_id>/<group>/exports.env
 - ingest `tail` 固定为 `[remember what's said, keep existing memory]`
 - 不复用旧 storage、workspace、session、cache
 - 不在 full run 中途改版本、模型路由或配置
-- `finalize_group.py` 会把 runtime architecture proof 纳入 invalidity，而不只看配置文件长相
+- `finalize_group.py` 会把 runtime architecture proof、tail literal、user pattern、gateway-only 约束一起纳入 invalidity
 
 ## 结果文件
 
@@ -142,16 +147,18 @@ export REPRO_RUNTIME_ENV_FILE=runtime_configs/<run_id>/<group>/exports.env
 ## 测试与 CI
 
 ```bash
-pytest
+pytest -q
+python3 scripts/build_benchmark.py
+python3 scripts/generate_source_manifest.py
 python3 scripts/preflight.py
 ```
 
 仓库附带最小 CI，会跑：
 
-- `pytest`
-- `python3 scripts/build_benchmark.py`
-- `python3 scripts/generate_source_manifest.py`
-- `python3 scripts/preflight.py`
+- `pytest -q`
+- `python scripts/build_benchmark.py`
+- `python scripts/generate_source_manifest.py`
+- `python scripts/preflight.py`
 
 ## 可选分析
 

@@ -26,6 +26,15 @@ from _common import (
     utc_now,
     write_json,
 )
+from repo_contract import (
+    CI_WORKFLOW,
+    ENV_EXAMPLE,
+    README_PATH,
+    disallowed_env_example_vars,
+    missing_env_example_vars,
+    readme_mentions_min_ci,
+    workflow_missing_required_commands,
+)
 from runtime_architecture import evaluate_runtime_architecture, normalize_runtime_architecture
 
 OPENCLAW_TEMPLATES = ROOT / 'env/openclaw_config_templates'
@@ -35,7 +44,6 @@ SOURCE_REGISTRY = ROOT / 'env/source_snapshot_registry.json'
 SOURCE_MANIFEST = ROOT / 'env/source_manifest.json'
 VERSIONS_MANIFEST = ROOT / 'env/versions_manifest.json'
 OFFICIAL_TARGETS = ROOT / 'official_targets.json'
-ENV_EXAMPLE = ROOT / '.env.example'
 
 ROW3_ALLOWED = {
     'mode', 'configPath', 'port', 'baseUrl', 'agentId', 'apiKey', 'targetUri', 'timeoutMs',
@@ -195,6 +203,37 @@ def validate_repo_structure(errors: list[str], notes: list[str]) -> None:
     for group in ['row3-openviking-minus-core', 'row4-compat-primary']:
         if group not in group_claims:
             errors.append(f'public evidence manifest missing group_claims entry for {group}')
+
+
+def validate_env_example_contract(errors: list[str], notes: list[str]) -> None:
+    if not ENV_EXAMPLE.exists():
+        errors.append('missing .env.example')
+        return
+
+    missing = missing_env_example_vars()
+    if missing:
+        errors.append(f'.env.example is missing required keys: {missing}')
+
+    disallowed = disallowed_env_example_vars()
+    if disallowed:
+        errors.append(f'.env.example must not contain runtime-generated keys: {disallowed}')
+
+
+def validate_ci_contract(errors: list[str], notes: list[str]) -> None:
+    mentions_ci = readme_mentions_min_ci()
+    if mentions_ci and not CI_WORKFLOW.exists():
+        errors.append('README declares a minimal CI workflow, but .github/workflows/ci.yml is missing')
+        return
+    if not CI_WORKFLOW.exists():
+        notes.append('minimal CI workflow is absent')
+        return
+
+    missing_cmds = workflow_missing_required_commands()
+    if missing_cmds:
+        errors.append(f'ci workflow is missing required commands: {missing_cmds}')
+
+    if mentions_ci and not README_PATH.exists():
+        errors.append('README is missing while CI contract expects it')
 
 
 def validate_templates(errors: list[str], notes: list[str]) -> None:
@@ -454,6 +493,10 @@ def main() -> None:
     report_path: Path | None = None
 
     validate_repo_structure(errors, notes)
+    if not errors:
+        validate_env_example_contract(errors, notes)
+    if not errors:
+        validate_ci_contract(errors, notes)
     if not errors:
         validate_templates(errors, notes)
     if args.group and not errors:
