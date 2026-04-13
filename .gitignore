@@ -1,0 +1,33 @@
+# local env / shells
+.env
+.envrc
+
+# virtual environments
+.venv/
+venv/
+
+# python caches / coverage
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+
+# editor / OS noise
+.DS_Store
+.vscode/
+.idea/
+
+# generated runtime configs and local preflight reports
+runtime_configs/
+reports/preflight/
+
+# private runtime state and raw private snapshots
+storage/*
+!storage/.gitkeep
+storage/**/private_snapshots/
+
+# local cache directories inside tracked source trees
+scripts/__pycache__/
+tests/__pycache__/
