@@ -43,3 +43,32 @@ def test_sensitive_values_are_not_coerced() -> None:
     assert out['port'] == 8080
     assert out['flag'] is True
     assert out['items'] == [1, 2]
+
+
+def test_redact_sensitive_tree_masks_secrets_and_returns_paths() -> None:
+    obj = {
+        'plugins': {
+            'entries': {
+                'memory-lancedb': {
+                    'config': {
+                        'embedding': {
+                            'apiKey': 'secret-1',
+                            'model': 'text-embedding-3-large',
+                        },
+                        'token': 'secret-2',
+                    }
+                }
+            }
+        },
+        'server': {
+            'port': 8080,
+        },
+    }
+
+    redacted, redacted_paths = _common.redact_sensitive_tree(obj)
+
+    assert redacted['plugins']['entries']['memory-lancedb']['config']['embedding']['apiKey'] == '[REDACTED]'
+    assert redacted['plugins']['entries']['memory-lancedb']['config']['token'] == '[REDACTED]'
+    assert redacted['server']['port'] == 8080
+    assert 'plugins.entries.memory-lancedb.config.embedding.apiKey' in redacted_paths
+    assert 'plugins.entries.memory-lancedb.config.token' in redacted_paths

@@ -9,7 +9,6 @@ from materialize_configs import materialize
 from _common import load_env_file, load_json
 
 
-
 def _set_row4_env(monkeypatch) -> None:
     env = {
         'OPENVIKING_SERVER_HOST': '127.0.0.1',
@@ -31,7 +30,6 @@ def _set_row4_env(monkeypatch) -> None:
         monkeypatch.setenv(key, value)
 
 
-
 def _set_row2_env(monkeypatch) -> None:
     env = {
         'LANCEDB_EMBEDDING_PROVIDER': 'openai-compatible',
@@ -42,7 +40,6 @@ def _set_row2_env(monkeypatch) -> None:
     }
     for key, value in env.items():
         monkeypatch.setenv(key, value)
-
 
 
 def test_materialize_writes_exports_and_coerces_types(monkeypatch, tmp_path: Path) -> None:
@@ -68,7 +65,6 @@ def test_materialize_writes_exports_and_coerces_types(monkeypatch, tmp_path: Pat
     assert manifest['openviking_workspace_path'].endswith('storage/unit-row4/row4-compat-primary/openviking-workspace')
 
 
-
 def test_materialize_overrides_stale_shell_config_paths(monkeypatch, tmp_path: Path) -> None:
     _set_row2_env(monkeypatch)
     monkeypatch.setenv('OPENCLAW_CONFIG_PATH', '/stale/config.json')
@@ -77,14 +73,12 @@ def test_materialize_overrides_stale_shell_config_paths(monkeypatch, tmp_path: P
     assert out['materialized_exports']['OPENCLAW_CONFIG_PATH'] == expected
 
 
-
 def test_materialize_rejects_existing_target_without_force(monkeypatch, tmp_path: Path) -> None:
     _set_row2_env(monkeypatch)
     materialize('row2-memory-lancedb', 'unit-reject', tmp_path)
     with pytest.raises(SystemExit) as exc:
         materialize('row2-memory-lancedb', 'unit-reject', tmp_path)
     assert 'runtime config dir already exists' in str(exc.value)
-
 
 
 def test_materialize_force_moves_old_target_to_backup(monkeypatch, tmp_path: Path) -> None:
@@ -103,7 +97,6 @@ def test_materialize_force_moves_old_target_to_backup(monkeypatch, tmp_path: Pat
     assert load_json(runtime_dir / 'materialization_manifest.json')['materialization_mode'] == 'force-replaced'
 
 
-
 def test_run_eval_group_requires_bound_materialization_manifest(monkeypatch, tmp_path: Path) -> None:
     _set_row4_env(monkeypatch)
     materialize('row4-compat-primary', 'unit-bind', tmp_path)
@@ -111,3 +104,32 @@ def test_run_eval_group_requires_bound_materialization_manifest(monkeypatch, tmp
     binding = reg._assert_materialization_binding('row4-compat-primary', 'unit-bind', exports)
     assert binding['materialization_manifest'].endswith('materialization_manifest.json')
     assert binding['materialization_dir'].endswith('/unit-bind/row4-compat-primary')
+
+
+def test_materialize_writes_row2_runtime_audit_freeze(monkeypatch, tmp_path: Path) -> None:
+    _set_row2_env(monkeypatch)
+    materialize('row2-memory-lancedb', 'unit-row2-freeze', tmp_path)
+    runtime_dir = tmp_path / 'unit-row2-freeze' / 'row2-memory-lancedb'
+    manifest = load_json(runtime_dir / 'materialization_manifest.json')
+
+    assert manifest['runtime_audit_freeze']['row2-memory-lancedb'] == {
+        'lancedb_embedding_provider': 'openai-compatible',
+    }
+
+
+def test_materialize_writes_openclaw_home_and_state_dir(monkeypatch, tmp_path: Path) -> None:
+    _set_row2_env(monkeypatch)
+    out = materialize('row2-memory-lancedb', 'unit-oc-state', tmp_path)
+    runtime_dir = tmp_path / 'unit-oc-state' / 'row2-memory-lancedb'
+    exports = load_env_file(runtime_dir / 'exports.env')
+    manifest = load_json(runtime_dir / 'materialization_manifest.json')
+
+    openclaw_home = Path(exports['OPENCLAW_HOME']).resolve()
+    openclaw_state_dir = Path(exports['OPENCLAW_STATE_DIR']).resolve()
+
+    assert openclaw_home.exists()
+    assert openclaw_state_dir.exists()
+    assert out['materialized_exports']['OPENCLAW_HOME'] == str(openclaw_home)
+    assert out['materialized_exports']['OPENCLAW_STATE_DIR'] == str(openclaw_state_dir)
+    assert manifest['runtime_isolation']['openclaw_home'] == str(openclaw_home)
+    assert manifest['runtime_isolation']['openclaw_state_dir'] == str(openclaw_state_dir)
